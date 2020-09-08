@@ -11,7 +11,7 @@ MySQL支持多种索引类型，BTREE、哈希、全文索引等。
 **所以在数据之外，数据库系统还维护着满足 特定 查找算法 的数据结构。这些数据结构以某种方式引用（指向）数据，这样就可以在这些数据结构上实现高级的查找算法，这种数据结构就是 索引。**
 
 **一个小例子：**
-![Binary_Tree](https://gitee.com/ethanjh/pictures/raw/master/binary_tree.png)
+![Binary_Tree](https://gitee.com/ethanjh/pictures/raw/master/binary_tree.jpg)
 > 上图展示维护了一个 二叉查找树，每个节点分别包含 索引键值 和 指向对应数据记录的物理地址，这样就可以运用 二分查找 O(log<sub>2</sub>n) 进行查找。
 > 但是实际的数据库系统几乎没有使用 二分查找树 或 其进化品种 红黑树 Red-Black Tree 实现的：
 >> 红黑树是存储在内存中才会使用的数据结构，在大规模数据存储场景，红黑树会出现 由于树的深度过大而导致 磁盘IO过于频繁 的问题。
