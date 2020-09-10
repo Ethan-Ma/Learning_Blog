@@ -17,4 +17,4 @@
   * [MySQL调优](./docs/mysql-1MySQL调优.md)
 
 * PDF
-	* [RDD](./docs/pdf.md)
+	* [PDF](./docs/pdf.md)
