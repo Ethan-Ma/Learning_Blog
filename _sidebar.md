@@ -16,5 +16,8 @@
 * MySQL 
   * [MySQL调优](./docs/mysql-1MySQL调优.md)
 
+* Scala
+  * [trait & abstract class](./docs/scala-1trait_abstractclass.md)
+
 * PDF
 	* [PDF](./docs/pdf.md)
