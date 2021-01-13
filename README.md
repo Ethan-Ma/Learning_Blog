@@ -7,6 +7,6 @@
 
 # 作者介绍
 
-**作者介绍:** 马建辉
+**作者介绍:** Ethan_Jhma
 
 ![picture](https://gitee.com/ethanjh/pictures/raw/master/img2.jpg)
