@@ -19,5 +19,9 @@
 * Scala
   * [trait & abstract class](./docs/scala-1trait_abstractclass.md)
 
+* Others
+	* English
+		* ![钱能买到快乐](/docs/others/eng/钱能买到快乐.md)
+
 * PDF
 	* [PDF](./docs/pdf.md)
