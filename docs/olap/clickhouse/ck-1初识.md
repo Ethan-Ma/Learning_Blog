@@ -196,8 +196,9 @@ PartitionID_MinBlockNum_MaxBlockNum_Level
 - MinBLockNum和MaxBlockNum：最小、大数据块编号；（BlockNum是一个表内自增的编号，从1开始累加）
 - Level：合并层次，可以理解为某个分区被合并过的次数。
 <br>
-&nbsp; &nbsp; *20200101_1_1_0*<br>
-<br>
+&nbsp; &nbsp; &nbsp; &nbsp; 20200101_1_1_0
+----
+
 #### 分区目录合并过程
 - 分区目录是在数据写入过程中被创建的，伴随着新数据的写入(INSERT)，MergeTree会生成一批新的分区目录;
 - 在之后的某个时刻(写入后10-15分钟，也可以手动执行optimize查询语句)，CK会通过后台任务将相同分区的多个目录合并成一个目录，目录中的索引和数据文件也会进行合并；
