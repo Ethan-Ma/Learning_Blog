@@ -103,7 +103,7 @@ MergeTree作为合并树家族中最基础的表引擎，提供了主键索引�
 ### MergeTree创建方式与存储结构
 MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片段不可修改，为了避免片段过多，CK后台会定期合并数据片段，属于相同分区的数据片段会被合并成一个新片段；
 #### MergeTree创建方式
-表的创建方式大致相同，但需要ENGINE=MergeTreee(), MergeTree 引擎没有参数;  
+表的创建方式大致相同，但需要ENGINE=MergeTree(), MergeTree 引擎没有参数;  
 CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]  
 (  
     &nbsp; &nbsp; &nbsp; name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],  
@@ -352,7 +352,7 @@ CREATE TABLE ttl_table_v1( <br>
 &nbsp; &nbsp; &nbsp; &nbsp; create_time DateTime, <br>
 &nbsp; &nbsp; &nbsp; &nbsp; code String TTL create_time + INTERVAL 10 SECOND, <br>
 &nbsp; &nbsp; &nbsp; &nbsp; type UInt8 TTL create_time + INTERVAL 10 SECOND  <br>
-)ENGINE=MergeTree  <br>
+)ENGINE=MergeTree()<br>
 PARTITION BY toYYYYMM(create_time)  <br>
 ORDER BY id  <br>
 ---------
@@ -368,7 +368,7 @@ CREATE TABLE ttl_table_v2(<br>
 &nbsp; &nbsp; &nbsp; &nbsp; create_time DateTime, <br>
 &nbsp; &nbsp; &nbsp; &nbsp; code String TTL create_time + INTERVAL 1 MINUTE,<br>
 &nbsp; &nbsp; &nbsp; &nbsp; type UInt8 <br>
-)ENGINE=MergeTree <br>
+)ENGINE=MergeTree()<br>
 PARTITION BY toYYYYMM(create_time) <br>
 ORDER BY create_time <br>
 TTL create_time + INTERVAL 1 DAY <br> 
