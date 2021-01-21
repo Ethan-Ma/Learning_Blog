@@ -8,7 +8,7 @@ LZ4就是一个用 16K大小的哈希表 存储字典并简化检索的LZ77。
 //(5,4)代表向前5个byte，匹配到的内容长度为4.
 
 1. 压缩格式
-![LZ4 Sequence]()
+![LZ4 Sequence](./lz4Sequence.jpg)
 
 输入：abcde_bcdefgh_abcdefghxxxxxxx
 输出：tokenabcde_(5,4)fgh_(14,5)fghxxxxxxx
@@ -31,7 +31,7 @@ Token记录literal长度，match长度。作为解压时候memcpy的参数
 由于offset用2个字节表示，所以只能扫描到2^16(64KB)距离的元素，对于4KB的内核页，只需要用到12位；
 扫描步长1字节是可以调整的，即对应LZ4_compress_fast机制，步长变长可以提高压缩解压速度，减少压缩率。
 
-![LZ算法实现]()
+![LZ算法实现](./lz算法实现.jpg)
 
 3. 解压算法
 根据解压前的数据流，取出token内的length，literals直接复制到输出，即memcpy(src,dst,length)

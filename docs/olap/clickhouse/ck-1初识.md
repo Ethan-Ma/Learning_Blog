@@ -1,8 +1,5 @@
 # ClickHouse
 
--------
-[toc]
--------
 ## 核心特性
 ### Tips
 1. 在索引方面，使用了LSM树所使用到的稀疏索引；
@@ -109,11 +106,11 @@ MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片�
 表的创建方式大致相同，但需要ENGINE=MergeTreee(), MergeTree 引擎没有参数;  
 CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]  
 (  
-    name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],  
-    name2 [type2] [DEFAULT|MATERIALIZED|ALIAS expr2] [TTL expr2],  
-    ...  
-    INDEX index_name1 expr1 TYPE type1(...) GRANULARITY value1,  
-    INDEX index_name2 expr2 TYPE type2(...) GRANULARITY value2  
+    &nbsp;&nbsp;&nbsp;&nbsp;name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],  
+    &nbsp;&nbsp;&nbsp;&nbsp;name2 [type2] [DEFAULT|MATERIALIZED|ALIAS expr2] [TTL expr2],  
+    &nbsp;&nbsp;&nbsp;&nbsp;...  
+    &nbsp;&nbsp;&nbsp;&nbsp;INDEX index_name1 expr1 TYPE type1(...) GRANULARITY value1,  
+    &nbsp;&nbsp;&nbsp;&nbsp;INDEX index_name2 expr2 TYPE type2(...) GRANULARITY value2  
 ) ENGINE = MergeTree()  
 ORDER BY expr  
 [PARTITION BY expr]  
@@ -143,26 +140,26 @@ min_bytes_for_wide_part,min_rows_for_wide_part 在数据片段中可以使用Wid
 
 MergeTree表引擎中的数据会按照分区目录的形式保存到磁盘，完整存储结构如下：
 --------
-table_name  
-|  
-|-partition_1  
-| |-checksums.txt						\  
-| |-columns.txt							|  
-| |-count.txt								|  
-| |-primary.idx							|  
-| |-[Column].bin						| 基础文件  
-| |-[Column].mrk						|  
-| |-[Column].mrk2						/  
-| |  
-| |-partition.dat						\ 使用分区键时才会生成  
-| |-minmax_[Column].idx			/  
-| |  
-| |-skp_idx_[Column].idx		\	使用二级索引时才会生成  
-| |-skp_idx_[Column].mrk		/  
-|  
-|-partition_2  
-|  
-|-partition_n  
+table_name<br>
+|<br>
+|-partition_1<br>
+| |-checksums.txt&nbsp;\ <br> 
+| |-columns.txt&nbsp;&nbsp;| <br> 
+| |-count.txt&nbsp;&nbsp;&nbsp;| <br> 
+| |-primary.idx&nbsp;&nbsp;|  <br>
+| |-[Column].bin&nbsp;|&nbsp;基础文件<br>  
+| |-[Column].mrk&nbsp;|  <br>
+| |-[Column].mrk2&nbsp;/  <br>
+| |  <br>
+| |-partition.dat&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\ 使用分区键时才会生成 <br> 
+| |-minmax_[Column].idx&nbsp;&nbsp;/  <br>
+| |  <br>
+| |-skp_idx_[Column].idx&nbsp;&nbsp;\	使用二级索引时才会生成  <br>
+| |-skp_idx_[Column].mrk&nbsp;&nbsp;/  <br>
+|  <br>
+|-partition_2  <br>
+|  <br>
+|-partition_n  <br>
 --------
 上图可以看出，一张表的物理结构分为3层：数据表目录、分区目录 和 分区下具体的数据文件。
 1. partition：分区目；
@@ -198,9 +195,9 @@ PartitionID_MinBlockNum_MaxBlockNum_Level
 - PartitionID：就是分区ID；
 - MinBLockNum和MaxBlockNum：最小、大数据块编号；（BlockNum是一个表内自增的编号，从1开始累加）
 - Level：合并层次，可以理解为某个分区被合并过的次数。
-
-*20200101_1_1_0*
-
+<br>
+*20200101_1_1_0*<br>
+<br>
 #### 分区目录合并过程
 - 分区目录是在数据写入过程中被创建的，伴随着新数据的写入(INSERT)，MergeTree会生成一批新的分区目录;
 - 在之后的某个时刻(写入后10-15分钟，也可以手动执行optimize查询语句)，CK会通过后台任务将相同分区的多个目录合并成一个目录，目录中的索引和数据文件也会进行合并；
@@ -254,14 +251,14 @@ MergeTree从第0段分区开始，以此获取聚合信息；当获取到第3个
 目前MergeTree共支持4种跳数索引：minmax, set, ngrambf_v1 和 tokenbf_v1。（一张表可以同时支持多个跳数索引）  
 
 CREATE TABLE skip_test(  
-	ID string,  
-	Url String,  
-	Code String,   
-	EventTiem Date,  
-	INDEX a ID TYPE minmax GRANULARITY 5,  
-	INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,  
-	INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,  
-	INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5  
+&nbsp;&nbsp;&nbsp;&nbsp;ID string,  
+&nbsp;&nbsp;&nbsp;&nbsp;Url String,  
+&nbsp;&nbsp;&nbsp;&nbsp;Code String,   
+&nbsp;&nbsp;&nbsp;&nbsp;EventTiem Date,  
+&nbsp;&nbsp;&nbsp;&nbsp;INDEX a ID TYPE minmax GRANULARITY 5,  
+&nbsp;&nbsp;&nbsp;&nbsp;INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,  
+&nbsp;&nbsp;&nbsp;&nbsp;INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,  
+&nbsp;&nbsp;&nbsp;&nbsp;INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5  
 )ENGINE=MergeTree()  
 ....  
 
@@ -347,32 +344,33 @@ MergeTree并不需要整段解压 压缩数据块，可以根据需要，以inde
 - TTL需要依托某个DateTime或Date类型的字段，通过对这个字段;
 - INTERVAL支持SECOND、MINUTE、HOUR、DAY、WEEK、MONTH、QUARTER 和 YEAR。
 ##### 列级别TTL
-TTL到期之后，列值会被还原为对应数据类型的默认值。  
-CREATE TABLE ttl_table_v1(    
-	id String,  
-	create_time DateTime,   
-	code String TTL create_time + INTERVAL 10 SECOND,  
-	type UInt8 TTL create_time + INTERVAL 10 SECOND  
-)ENGINE=MergeTree  
-PARTITION BY toYYYYMM(create_time)  
-ORDER BY id  
+
+TTL到期之后，列值会被还原为对应数据类型的默认值。<br> 
+CREATE TABLE ttl_table_v1(    <br>
+&nbsp;&nbsp;&nbsp;&nbsp;id String,<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;create_time DateTime, <br>  
+&nbsp;&nbsp;&nbsp;&nbsp;code String TTL create_time + INTERVAL 10 SECOND, <br> 
+&nbsp;&nbsp;&nbsp;&nbsp;type UInt8 TTL create_time + INTERVAL 10 SECOND  <br>
+)ENGINE=MergeTree  <br>
+PARTITION BY toYYYYMM(create_time)  <br>
+ORDER BY id  <br>
 ---------
 - 修改列字段的TTL，或者添加列字段的TTL：  
 - ALTER TABLE ttl_table_v1 MODIFY COLUMN code String TTL create_time + INTERVAL 1 DAY
 - 目前CK没有提供取消列级别TTL的方法。
 
 ##### 表级别TTL
-TTL到期之后，会将过期的数据行整行删除。  
-
+TTL到期之后，会将过期的数据行整行删除。<br> 
+<br>
 CREATE TABLE ttl_table_v2(  
-	id String,  
-	create_time DateTime,  
-	code String TTL create_time + INTERVAL 1 MINUTE,  
-	type UInt8  
-)ENGINE=MergeTree  
-PARTITION BY toYYYYMM(create_time)  
-ORDER BY create_time  
-TTL create_time + INTERVAL 1 DAY  
+&nbsp;&nbsp;&nbsp;&nbsp;id String, <br> 
+&nbsp;&nbsp;&nbsp;&nbsp;create_time DateTime,  <br>
+&nbsp;&nbsp;&nbsp;&nbsp;code String TTL create_time + INTERVAL 1 MINUTE,<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;type UInt8  <br>
+)ENGINE=MergeTree <br> 
+PARTITION BY toYYYYMM(create_time)  <br>
+ORDER BY create_time  <br>
+TTL create_time + INTERVAL 1 DAY <br> 
 
 - 修改表的TTL：  
 - ALERT TABLE ttl_table_v2 MODIFY TTL create_time + INTERVAL 3 DAY
@@ -385,8 +383,8 @@ TTL create_time + INTERVAL 1 DAY
 - 一个分区中某列数据过期，合并之后的新分区目录中将不会包含这个字段的数据文件(.bin和.mrk)
 - TTL默认的合并频率由MergeTree的merge_with_ttl_timeout参数控制，默认86400秒，即1天。它维护的是一个转悠的TTL任务队列，有别于MergeTree的常规合并任务，如果这个值被设置的过小，可能会带来性能的损耗；
 - 可以使用optimize命令强制触发合并：  
-	optimize TABLE table_name  //触发一个分区的合并  
-	optimize TABLE table_name FINAL   //触发所有分区合并  
+	&nbsp;&nbsp;&nbsp;&nbsp;optimize TABLE table_name  //触发一个分区的合并<br>  
+	&nbsp;&nbsp;&nbsp;&nbsp;optimize TABLE table_name FINAL   //触发所有分区合并<br>
 - CK虽然没有提供删除TTL的方法，但是提供了控制全局TTL合并任务的启停方法：  
 	SYSTEM STOP/START TTL MERGES      //还是不能做到按每张数据表启停  
 
@@ -401,14 +399,14 @@ TTL create_time + INTERVAL 1 DAY
 - ReplacingMergeTree则能够在合并分区的时候删除重复数据，确实也在‘一定程度’上解决了重复数据的问题。（以分区为单位删除重复数据）;
 - 创建：ENGINE=ReplacingMergeTree(ver)   //ver是选填，会指定一个UInt*、Date或者DateTime类型的字段作为版本号，这个参数决定了数据去重时所使用的算法。  
   
-CREATE TABLE replace_table(  
-	id String,  
-	code String,   
-	create_time DateTime  
-)ENGINE=ReplacingMergeTree(create_time)  
-PARTITION BY toYYYYMM(create_time)  
-ORDER BY (id, code)  
-PRIMARY KEY id  
+CREATE TABLE replace_table( <br>
+&nbsp;&nbsp;&nbsp;&nbsp;id String, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;code String,<br>   
+&nbsp;&nbsp;&nbsp;&nbsp;create_time DateTime<br>  
+)ENGINE=ReplacingMergeTree(create_time)<br>  
+PARTITION BY toYYYYMM(create_time) <br>
+ORDER BY (id, code) <br>
+PRIMARY KEY id <br>
   
 ----
 - ORDER BY 所声明的表达式是后续作为判断数据是否重复的依据；
@@ -431,22 +429,22 @@ PRIMARY KEY id
 - 如果同时定义了ORDER BY和PRIMARY KEY，那便是明确希望它俩不同；同时声明时，MergeTree会强制要求PRIMARY KEY字段必须是ORDER BY的前缀。
 -----
 
-SummingMergeTree使用：  
-CREATE TABLE  summing_table(  
-	id String,  
-	city, String,  
-	v1 UInt32,  
-	v2 Float64,  
-	create_time DateTime  
-)ENGINE=SummingMergeTree()  
-PARTITION BY toYYYYMM(create_time)  
-ORDER BY (id, city)  
-PRIMARY KEY id  
+SummingMergeTree使用:<br>
+CREATE TABLE  summing_table(<br> 
+&nbsp;&nbsp;&nbsp;&nbsp;id String, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;city, String,<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;v1 UInt32, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;v2 Float64, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;create_time DateTime<br>  
+)ENGINE=SummingMergeTree()<br>  
+PARTITION BY toYYYYMM(create_time)<br>  
+ORDER BY (id, city)<br>
+PRIMARY KEY id<br>
 
-//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段。  
-//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总。  
+//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段;<br> 
+//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总.<br>
 
-SummingMergeTree处理逻辑：  
+SummingMergeTree处理逻辑：<br>
 1. 用ORDER BY排序键作为聚合数据的条件KEY；
 2. 只有在合并分区时才会触发汇总的逻辑；
 3. 以分区为单位进行汇总；
@@ -459,54 +457,54 @@ SummingMergeTree处理逻辑：
 - ENGINE=AggregatingMergeTree()   *//没有任何参数；在分区合并时会按照ORDER BY聚合；可以通过AggregateFunction来定义聚合函数；*
 
 -----
-CREATE TABLE agg_table(  
-	id String,  
-	city String,  
-	code AggregateFunction(uniq, String),  
-	value AggregateFunction(sum, UInt32),  
-	create_time DateTime  
-)ENGINE=AggregatingMergeTree()  
-PARTITION BY toYYYYMM(create_time)  
-ORDER BY (id, city)  
-PRIMARY KEY id  
+CREATE TABLE agg_table(<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;id String, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;city String, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;code AggregateFunction(uniq, String),<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;value AggregateFunction(sum, UInt32),<br>
+&nbsp;&nbsp;&nbsp;&nbsp;create_time DateTime <br>
+)ENGINE=AggregatingMergeTree()<br>  
+PARTITION BY toYYYYMM(create_time)<br>  
+ORDER BY (id, city) <br>
+PRIMARY KEY id <br>
 ------
 
 - AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
-*写入数据*  
-INSERT INTO TABLE agg_table  
-SELECT 'A00', 'wuhan',  
-uniqState('code1'),  
-sumState(toUInt32(100)),  
-'2020-01-01 00:00:01'  
+*写入数据* <br>
+INSERT INTO TABLE agg_table<br>  
+SELECT 'A00', 'wuhan', <br>
+uniqState('code1'), <br>
+sumState(toUInt32(100)),<br>  
+'2020-01-01 00:00:01' <br>
 
-*查询数据*  
-SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table  
-GROUP BY id, city  
+*查询数据* <br>
+SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br>  
+GROUP BY id, city <br>
 
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
-*底表*  
-//用于存储全量的明细数据  
-CREATE TABLE agg_table_basic(  
-	id String,   
-	city String,  
-	code String,  
-	value UInt32  
-)ENGINE=MergeTree()  
-PARTITION BY city  
-ORDER BY (id, city)    
-  
-*物化视图*  
-CREATE MATERIALIZED VIEW agg_view  
-ENGINE=AggregatingMergeTree()  
-PARTITION BY city  
-ORDER BY (id, city)  
-AS SELECT   
-	id,   
-	city,   
-	uniqState(code) AS code,  
-	sumState(value) AS value  
-FROM agg_table_basic  
-GROUP BY id, city  
+*底表* <br>
+//用于存储全量的明细数据 <br>
+CREATE TABLE agg_table_basic(<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;id String,<br>   
+&nbsp;&nbsp;&nbsp;&nbsp;city String,<br> 
+&nbsp;&nbsp;&nbsp;&nbsp;code String,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;value UInt32 <br>
+)ENGINE=MergeTree() <br>
+PARTITION BY city <br>
+ORDER BY (id, city) <br>  
+ <br>
+*物化视图*<br> 
+CREATE MATERIALIZED VIEW agg_view<br>  
+ENGINE=AggregatingMergeTree() <br>
+PARTITION BY city <br>
+ORDER BY (id, city) <br>
+AS SELECT <br>
+&nbsp;&nbsp;&nbsp;&nbsp;id, <br>
+&nbsp;&nbsp;&nbsp;&nbsp;city,<br> 
+&nbsp;&nbsp;&nbsp;&nbsp;uniqState(code) AS code,<br>  
+&nbsp;&nbsp;&nbsp;&nbsp;sumState(value) AS value<br>
+FROM agg_table_basic <br>
+GROUP BY id, city <br>
  
 
 	
