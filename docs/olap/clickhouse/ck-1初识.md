@@ -470,19 +470,19 @@ PRIMARY KEY id <br>
 ------
 
 - AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
-*写入数据* <br>
+- *写入数据* <br>
 INSERT INTO TABLE agg_table<br>
 SELECT 'A00', 'wuhan', <br>
 uniqState('code1'), <br>
 sumState(toUInt32(100)),<br>
 '2020-01-01 00:00:01' <br>
 
-*查询数据* <br>
+- *查询数据* <br>
 SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br> 
 GROUP BY id, city <br>
 
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
-*底表* <br>
+- *底表* <br>
 //用于存储全量的明细数据 <br>
 CREATE TABLE agg_table_basic(<br>
 &nbsp; &nbsp; &nbsp; &nbsp; id String,<br>
@@ -493,7 +493,7 @@ CREATE TABLE agg_table_basic(<br>
 PARTITION BY city <br>
 ORDER BY (id, city) <br>
  <br>
-*物化视图*<br>
+- *物化视图*<br>
 CREATE MATERIALIZED VIEW agg_view<br>
 ENGINE=AggregatingMergeTree() <br>
 PARTITION BY city <br>
