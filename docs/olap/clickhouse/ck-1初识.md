@@ -275,6 +275,221 @@ MergeTree将数据写入.bin文件的方式：
 - 在具体读取某列数据时(.bin文件)，首先加载压缩数据到内存，并解压；通过压缩数据块，可以在不读取整个.bin文件的情况下将读取粒度降低到压缩数据块级别，从而进一步缩小数据读取范围。
 
 ### 数据标记
+数据标记为 一级索引(.idx)和数据文件(.bin)之间建立联系；
+数据标记记录了两个重要信息：
+- 记录一级索引的索引信息；
+- 记录数据在数据块中的偏移量。
 
+#### 数据标记生成规则
+- 数据标记 和索引区间 是对齐的，均按照index-granularity的粒度间隔；所以只需要通过索引区间的下标就可以直接找到对应的数据标记编号；
+- 数据标记文件也与数据文件一一对应，即每一列字段[Column].bin文件都有一个与之对应的[Column].mrk数据标记文件，用于记录数据在.bin文件中的起始偏移量。
 
+一行 标记数据 使用一个元组表示一个片段的数据(默认8192行)，元组内包含两个整型数值，分别是：
+- 数据在.bin压缩文件中的 压缩数据块的起始偏移量；
+- 数据在 解压数据块 中的起始偏移量。
 
+标记数据 与一级索引 不同，它并不能常驻内存，而是使用LRU（最近最少使用）缓存策略加快其取用速度。
+
+#### 数据标记的工作方式
+MergeTree引擎在查找数据时，整个过包括两个步骤：读取压缩数据块 和 读取数据；
+![mrk.jpg]()
+
+上图说明：
+前提： 
+- JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
+- 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
+- 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
+
+MergeTree定位压缩数据块并读取数据：
+1. 读取压缩数据块：
+MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：
+- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间；
+	(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)
+- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；
+2. 读取数据：
+MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：
+- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；
+- 解压之后，依据解压数据块中的起始偏移量读取数据。
+
+### 对于分区、索引、标记和压缩数据的协同总结
+#### 写入过程
+1. 伴随着每一批数据的写入，都会生成新的分区目录；在后续某一时刻，相同分区的目录会合并；
+2. 按照index_granularity索引粒度，会分别生成primary.idx一级索引(如果声明了二级索引，还会创建二级索引)、每一个列字段的.mrk数据标记和.bin压缩数据文件；
+
+#### 查询过程
+- 查询的本质可以看做一个不断缩小数据范围的过程；
+- 理想情况下MergeTree首先依次借助分区索引、一级索引和二级索引，将数据扫描范围缩至最小，然后借助标记数据，将需要解压和计算的数据范围缩至最小；
+- 即使MergeTree不能预先减小数据范围，它会扫描所有的分区目录以及目录内索引短的最大区间，虽然不能减少数据范围，但是仍然能够借助数据标记，以多线程的形式同时读取多个压缩数据块，以提升性能。
+
+## MergeTree系列表引擎 
+### MergeTree
+前面已经介绍MergeTree提供了数据分区、一级索引和二级索引等功能，在此进一步介绍MergeTree家族独有另外两项能力：数据TTL 与 存储策略。
+
+#### 数据TTL
+- TTL Time to Live，数据的存活时间；MergeTree可以为某个字段或者整个表设置TTL，如果同时设置列级别和表级别TTL，则会以先到期的TTL为主;
+- TTL需要依托某个DateTime或Date类型的字段，通过对这个字段;
+- INTERVAL支持SECOND、MINUTE、HOUR、DAY、WEEK、MONTH、QUARTER 和 YEAR。
+##### 列级别TTL
+TTL到期之后，列值会被还原为对应数据类型的默认值。
+CREATE TABLE ttl_table_v1(
+	id String,
+	create_time DateTime, 
+	code String TTL create_time + INTERVAL 10 SECOND,
+	type UInt8 TTL create_time + INTERVAL 10 SECOND
+)ENGINE=MergeTree
+PARTITION BY toYYYYMM(create_time)
+ORDER BY id
+
+- 修改列字段的TTL，或者添加列字段的TTL：
+- ALTER TABLE ttl_table_v1 MODIFY COLUMN code String TTL create_time + INTERVAL 1 DAY
+- 目前CK没有提供取消列级别TTL的方法。
+
+##### 表级别TTL
+TTL到期之后，会将过期的数据行整行删除。
+
+CREATE TABLE ttl_table_v2(
+	id String,
+	create_time DateTime,
+	code String TTL create_time + INTERVAL 1 MINUTE,
+	type UInt8
+)ENGINE=MergeTree
+PARTITION BY toYYYYMM(create_time)
+ORDER BY create_time
+TTL create_time + INTERVAL 1 DAY
+
+- 修改表的TTL：
+- ALERT TABLE ttl_table_v2 MODIFY TTL create_time + INTERVAL 3 DAY
+- 表级别TTL目前也没有取消方法。
+
+##### TTL运行机理
+- 如果设置了TTL，在写入数据时，会以在分区目录下创建ttl.txt文件；ttl.txt文件通过JSON配置保存TTL的相关信息：columns用于保存列级别TTL信息，table由于保存表级别TTL信息。
+- 只有在合并分区时，才会触发删除TTL过期数据的逻辑；
+- 在选择删除分区时，会使用贪婪算法，算法规则是尽可能找到会最早过期的，同时年纪又是最老的分区（合并次数更多，MaxBlockNum更大的）；
+- 一个分区中某列数据过期，合并之后的新分区目录中将不会包含这个字段的数据文件(.bin和.mrk)
+- TTL默认的合并频率由MergeTree的merge_with_ttl_timeout参数控制，默认86400秒，即1天。它维护的是一个转悠的TTL任务队列，有别于MergeTree的常规合并任务，如果这个值被设置的过小，可能会带来性能的损耗；
+- 可以使用optimize命令强制触发合并：
+	optimize TABLE table_name  //触发一个分区的合并
+	optimize TABLE table_name FINAL   //触发所有分区合并
+- CK虽然没有提供删除TTL的方法，但是提供了控制全局TTL合并任务的启停方法：
+	SYSTEM STOP/START TTL MERGES      //还是不能做到按每张数据表启停
+
+#### 多路径存储策略
+目前有三种存储策略：
+1. 默认策略：所有分区会自动保存到config.xml配置中的path指定路径下；
+2. JBOD策略：Just a Bunch of Disks，是一种轮询策略；这种策略效果类似RAID 0，可以降低单块磁盘的负载，在一定条件下能够增加数据并行读写的性能；
+3. HOT/COLD策略：适合服务器挂载了不同类型磁盘的场景；
+
+### ReplacingMergeTree
+- MergeTree拥有主键，但是它的主键没有唯一键的约束，这就意味着即便多行数据的主键相同，他们还是能够被正常写入的；
+- ReplacingMergeTree则能够在合并分区的时候删除重复数据，确实也在‘一定程度’上解决了重复数据的问题。（以分区为单位删除重复数据）;
+- 创建：ENGINE=ReplacingMergeTree(ver)   //ver是选填，会指定一个UInt*、Date或者DateTime类型的字段作为版本号，这个参数决定了数据去重时所使用的算法。
+
+CREATE TABLE replace_table(
+	id String,
+	code String, 
+	create_time DateTime
+)ENGINE=ReplacingMergeTree(create_time)
+PARTITION BY toYYYYMM(create_time)
+ORDER BY (id, code)
+PRIMARY KEY id
+
+----
+- ORDER BY 所声明的表达式是后续作为判断数据是否重复的依据；
+- 只有在合并分区的时候才会触发删除重复数据的逻辑；
+- 分区合并时，同一分区的重复数据才会被删除，不同分区的重复数据不会被删除；
+- 分区内数据已经基于ORDER BY进行了排序，所以能够找到那些相邻的重复数据；
+- 数据去重有两种策略：
+ 	1. 如果没有设置ver版本号，则保留同一分区中最后一行的重复数据；
+	2. 如果设置了ver版本号，则保留同一分区中ver字段取值最大的的那一行。
+-----
+
+### SummingMergeTree
+- 场景：终端用户不关心明细数据，只查询数据汇总结果，并且汇总条件预先明确(GROUP BY条件明确，且不会随意改变)
+- 直接查询存在问题：
+	1. 额外存储开销：终端用户不关心明细数据，所以不应该一直保存所有明细数据；
+	2. 额外查询开销：每次查询都进行实时聚合计算会有性能损耗。
+- 解决：SummingMergeTree能够在每次合并分区时按照预先定义的条件进行数据的聚合计算，既减少了数据条数，又降低了后续查询开销：
+-----
+- MergeTree在每个数据分区中会按照ORDER BY表达式排序，主键索引也会按照PRIMARY KEY表达式取值并排序；而ORDER BY可以指代主键，所以一般情况下，只单独声明ORDER BY即可，此时ORDER BY和PRIMARY KEY定义相同，数据排序和主键索引相同。
+- 如果同时定义了ORDER BY和PRIMARY KEY，那便是明确希望它俩不同；同时声明时，MergeTree会强制要求PRIMARY KEY字段必须是ORDER BY的前缀。
+-----
+
+SummingMergeTree使用：
+CREATE TABLE  summing_table(
+	id String,
+	city, String,
+	v1 UInt32,
+	v2 Float64,
+	create_time DateTime
+)ENGINE=SummingMergeTree()
+PARTITION BY toYYYYMM(create_time)
+ORDER BY (id, city)
+PRIMARY KEY id
+
+//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段。
+//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总。
+
+SummingMergeTree处理逻辑：
+1. 用ORDER BY排序键作为聚合数据的条件KEY；
+2. 只有在合并分区时才会触发汇总的逻辑；
+3. 以分区为单位进行汇总；
+4. 在进行数据汇总时，因为分区内数据已经是基于ORDER BY排序，所以能够找到相邻且拥有相同聚合KEY的数据；
+5. 对于汇总字段会进行SUM计算，对于非汇总字段则会取第一行数据；
+6. *支持嵌套结构，但列字段名称必须以Map作为后缀；嵌套类型中默认以第一个字段作为聚合Key，除第一个字段外，任何名称以Key、Id或Type为后缀的字段都将和第一个字段一起组成复合Key。*
+
+### AggregatingMergeTree
+- 它是SummingMergeTree的升级版，但是可以自定义聚合函数；
+- ENGINE=AggregatingMergeTree()   *//没有任何参数；在分区合并时会按照ORDER BY聚合；可以通过AggregateFunction来定义聚合函数；*
+
+-----
+CREATE TABLE agg_table(
+	id String,
+	city String,
+	code AggregateFunction(uniq, String),
+	value AggregateFunction(sum, UInt32),
+	create_time DateTime
+)ENGINE=AggregatingMergeTree()
+PARTITION BY toYYYYMM(create_time)
+ORDER BY (id, city)
+PRIMARY KEY id
+------
+
+- AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
+*写入数据*
+INSERT INTO TABLE agg_table
+SELECT 'A00', 'wuhan',
+uniqState('code1'),
+sumState(toUInt32(100)),
+'2020-01-01 00:00:01'
+
+*查询数据*
+SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table
+GROUP BY id, city
+
+- 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
+*底表*
+//用于存储全量的明细数据
+CREATE TABLE agg_table_basic(
+	id String, 
+	city String,
+	code String,
+	value UInt32
+)ENGINE=MergeTree()
+PARTITION BY city
+ORDER BY (id, city)
+
+*物化视图*
+CREATE MATERIALIZED VIEW agg_view
+ENGINE=AggregatingMergeTree()
+PARTITION BY city
+ORDER BY (id, city)
+AS SELECT 
+	id, 
+	city, 
+	uniqState(code) AS code,
+	sumState(value) AS value
+FROM agg_table_basic
+GROUP BY id, city
+ 
+
+	

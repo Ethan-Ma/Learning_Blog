@@ -24,5 +24,9 @@
 		* [钱能买到快乐](./docs/others/eng/钱能买到快乐.md)
 		* [音乐带来的快乐](./docs/others/eng/音乐带来的快乐.md)
 
+* OLAP
+	* ClickHouse
+		* [初始](./docs/olap/clickhouse/ck-1初识.md)
+
 * PDF
 	* [PDF](./docs/pdf.md)
