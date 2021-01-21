@@ -1,7 +1,7 @@
-#LZ4
+# LZ4
 LZ4就是一个用 16K大小的哈希表 存储字典并简化检索的LZ77。
 
-##压缩原理
+## 压缩原理
 举个例子：
 输入：abcde_bcdefgh_abcdefghxxxxx
 输出：abcde_(5,4)fgh_(14,5)fghxxxxx
