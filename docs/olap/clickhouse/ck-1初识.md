@@ -1,7 +1,7 @@
 # ClickHouse
 
 -------
-[TOC]
+[toc]
 -------
 ## 核心特性
 ### Tips
@@ -100,61 +100,62 @@ MergeTree作为合并树家族中最基础的表引擎，提供了主键索引�
 ### MergeTree创建方式与存储结构
 MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片段不可修改，为了避免片段过多，CK后台会定期合并数据片段，属于相同分区的数据片段会被合并成一个新片段；
 #### MergeTree创建方式
-表的创建方式大致相同，但需要ENGINE=MergeTreee(), MergeTree 引擎没有参数;
-CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]
-(
-    name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],
-    name2 [type2] [DEFAULT|MATERIALIZED|ALIAS expr2] [TTL expr2],
-    ...
-    INDEX index_name1 expr1 TYPE type1(...) GRANULARITY value1,
-    INDEX index_name2 expr2 TYPE type2(...) GRANULARITY value2
-) ENGINE = MergeTree()
-ORDER BY expr
-[PARTITION BY expr]
-[PRIMARY KEY expr]
-[SAMPLE BY expr]
-[TTL expr [DELETE|TO DISK 'xxx'|TO VOLUME 'xxx'], ...]
-[SETTINGS name=value, ...]
-
+表的创建方式大致相同，但需要ENGINE=MergeTreee(), MergeTree 引擎没有参数;  
+CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]  
+(  
+    name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],  
+    name2 [type2] [DEFAULT|MATERIALIZED|ALIAS expr2] [TTL expr2],  
+    ...  
+    INDEX index_name1 expr1 TYPE type1(...) GRANULARITY value1,  
+    INDEX index_name2 expr2 TYPE type2(...) GRANULARITY value2  
+) ENGINE = MergeTree()  
+ORDER BY expr  
+[PARTITION BY expr]  
+[PRIMARY KEY expr]  
+[SAMPLE BY expr]  
+[TTL expr [DELETE|TO DISK 'xxx'|TO VOLUME 'xxx'], ...]  
+[SETTINGS name=value, ...]  
+-----
 1. PARTITION BY [选填]：分区键，支持单列、多个列的元组以及列表达式；如果不声明分区键，则CK会生成一个名为all的分区；合理使用数据分区，可以有效减少查询时数据文件的扫描范围；
 2. ORDER BY [必填]：排序键，支持单列、多个列的元组以及列表达式；默认情况下，主键(PRIMARY KEY)与排序键相同；
 3. PRIMARY KEY[选填]：主键，声明之后会依照主键字段生成一级索引，用于加速表查询；默认情况下，主键(PRIMARY KEY)与排序键相同，所以通常直接使用ORDER BY 代为指定主键，无须刻意声明；与其他数据库不同，MergeeTree主键允许存在重复数据(ReplacingMergeTree可以去重)；
 4. SAMPLE BY [选填]：抽样表达式，用于声明数据以何种标准进行采样，如果用了此配置，那么在主键的配置中也需要声明同样的表达式；
-5. SETTINGS — 控制 MergeTree 行为的额外参数：
-index_granularity — 索引粒度。索引中相邻的『标记』间的数据行数。默认值，8192 。参考数据存储。
-index_granularity_bytes — 索引粒度，以字节为单位，默认值: 10Mb。如果想要仅按数据行数限制索引粒度, 请设置为0(不建议)。
-enable_mixed_granularity_parts — 是否启用通过 index_granularity_bytes 控制索引粒度的大小。在19.11版本之前, 只有 index_granularity 配置能够用于限制索引粒度的大小。当从具有很大的行（几十上百兆字节）的表中查询数据时候，index_granularity_bytes 配置能够提升ClickHouse的性能。如果你的表里有很大的行，可以开启这项配置来提升SELECT 查询的性能。
-use_minimalistic_part_header_in_zookeeper — 是否在 ZooKeeper 中启用最小的数据片段头 。如果设置了 use_minimalistic_part_header_in_zookeeper=1 ，ZooKeeper 会存储更少的数据。更多信息参考『服务配置参数』这章中的 设置描述 。
-min_merge_bytes_to_use_direct_io — 使用直接 I/O 来操作磁盘的合并操作时要求的最小数据量。合并数据片段时，ClickHouse 会计算要被合并的所有数据的总存储空间。如果大小超过了 min_merge_bytes_to_use_direct_io 设置的字节数，则 ClickHouse 将使用直接 I/O 接口（O_DIRECT 选项）对磁盘读写。如果设置 min_merge_bytes_to_use_direct_io = 0 ，则会禁用直接 I/O。默认值：10 * 1024 * 1024 * 1024 字节。
-merge_with_ttl_timeout — TTL合并频率的最小间隔时间，单位：秒。默认值: 86400 (1 天)。
-write_final_mark — 是否启用在数据片段尾部写入最终索引标记。默认值: 1（不建议更改）。
-merge_max_block_size — 在块中进行合并操作时的最大行数限制。默认值：8192
-storage_policy — 存储策略。 参见 使用具有多个块的设备进行数据存储.
-min_bytes_for_wide_part,min_rows_for_wide_part 在数据片段中可以使用Wide格式进行存储的最小字节数/行数。你可以不设置、只设置一个，或全都设置。参考：数据存储
+5. SETTINGS — 控制 MergeTree 行为的额外参数：  
+index_granularity — 索引粒度。索引中相邻的『标记』间的数据行数。默认值，8192 。参考数据存储。  
+index_granularity_bytes — 索引粒度，以字节为单位，默认值: 10Mb。如果想要仅按数据行数限制索引粒度, 请设置为0(不建议)。  
+enable_mixed_granularity_parts — 是否启用通过 index_granularity_bytes 控制索引粒度的大小。在19.11版本之前, 只有 index_granularity 配置能够用于限制索引粒度的大小。当从具有很大的行（几十上百兆字节）的表中查询数据时候，index_granularity_bytes 配置能够提升ClickHouse的性能。如果你的表里有很大的行，可以开启这项配置来提升SELECT 查询的性能。  
+use_minimalistic_part_header_in_zookeeper — 是否在 ZooKeeper 中启用最小的数据片段头 。如果设置了 use_minimalistic_part_header_in_zookeeper=1 ，ZooKeeper 会存储更少的数据。更多信息参考『服务配置参数』这章中的 设置描述 。  
+min_merge_bytes_to_use_direct_io — 使用直接 I/O 来操作磁盘的合并操作时要求的最小数据量。合并数据片段时，ClickHouse 会计算要被合并的所有数据的总存储空间。如果大小超过了 min_merge_bytes_to_use_direct_io 设置的字节数，则 ClickHouse 将使用直接 I/O 接口（O_DIRECT 选项）对磁盘读写。如果设置 min_merge_bytes_to_use_direct_io = 0 ，则会禁用直接 I/O。默认值：10 * 1024 * 1024 * 1024 字节。  
+merge_with_ttl_timeout — TTL合并频率的最小间隔时间，单位：秒。默认值: 86400 (1 天)。  
+write_final_mark — 是否启用在数据片段尾部写入最终索引标记。默认值: 1（不建议更改）。  
+merge_max_block_size — 在块中进行合并操作时的最大行数限制。默认值：8192  
+storage_policy — 存储策略。 参见 使用具有多个块的设备进行数据存储.  
+min_bytes_for_wide_part,min_rows_for_wide_part 在数据片段中可以使用Wide格式进行存储的最小字节数/行数。你可以不设置、只设置一个，或全都设置。参考：数据存储  
+
 
 ### MergeTree的存储结构
 MergeTree表引擎中的数据会按照分区目录的形式保存到磁盘，完整存储结构如下：
 --------
-table_name
-|
-|-partition_1
-| |-checksums.txt						\
-| |-columns.txt							|
-| |-count.txt								|
-| |-primary.idx							|
-| |-[Column].bin						| 基础文件
-| |-[Column].mrk						|
-| |-[Column].mrk2						/
-| |
-| |-partition.dat						\ 使用分区键时才会生成
-| |-minmax_[Column].idx			/
-| |
-| |-skp_idx_[Column].idx		\	使用二级索引时才会生成
-| |-skp_idx_[Column].mrk		/
-|
-|-partition_2
-|
-|-partition_n
+table_name  
+|  
+|-partition_1  
+| |-checksums.txt						\  
+| |-columns.txt							|  
+| |-count.txt								|  
+| |-primary.idx							|  
+| |-[Column].bin						| 基础文件  
+| |-[Column].mrk						|  
+| |-[Column].mrk2						/  
+| |  
+| |-partition.dat						\ 使用分区键时才会生成  
+| |-minmax_[Column].idx			/  
+| |  
+| |-skp_idx_[Column].idx		\	使用二级索引时才会生成  
+| |-skp_idx_[Column].mrk		/  
+|  
+|-partition_2  
+|  
+|-partition_n  
 --------
 上图可以看出，一张表的物理结构分为3层：数据表目录、分区目录 和 分区下具体的数据文件。
 1. partition：分区目；
@@ -172,7 +173,8 @@ table_name
 10. skp_idx_[Column].idx与skp_idx_[Column].mrk：如果声明了二级索引，则会生成相应的二级索引文件和标记文件，都使用二进制格式存储；二级索引在CK中又称为跳数索引，最终目标与一级索引相同，都是为了进一步减少所需扫描的数据范围，加速查询。
 
 ### 数据分区
-在MergeTree中数据是以分区目录的形式组织的，数据分区(partition)与数据分片(shard)是不同的概念，数据分区是针对本地数据而言的，是对数据的一种纵向的切分，MT并不能依靠分区特性将一张表的数据分布存储到多个CK服务节点，而数据分片具有横向切分的能力；
+- 在MergeTree中数据是以分区目录的形式组织的，数据分区(partition)与数据分片(shard)是不同的概念，数据分区是针对本地数据而言的，是对数据的一种纵向的切分;
+- MT并不能依靠分区特性将一张表的数据分布存储到多个CK服务节点，而数据分片具有横向切分的能力；
 #### 数据分区规则
 | 类型     | 样例数据        | 分区表达式             | 分区ID                        |
 |----------|-----------------|------------------------|-------------------------------|
@@ -185,15 +187,17 @@ table_name
 > 多个ID之间是通过-连字符链接的。
 -----
 #### 分区目录的命名规则
- PartitionID_MinBlockNum_MaxBlockNum_Level
+PartitionID_MinBlockNum_MaxBlockNum_Level
 - PartitionID：就是分区ID；
 - MinBLockNum和MaxBlockNum：最小、大数据块编号；（BlockNum是一个表内自增的编号，从1开始累加）
 - Level：合并层次，可以理解为某个分区被合并过的次数。
 
-20200101_1_1_0
+*20200101_1_1_0*
 
 #### 分区目录合并过程
-分区目录是在数据写入过程中被创建的，伴随着新数据的写入(INSERT)，MergeTree会生成一批新的分区目录，在之后的某个时刻(写入后10-15分钟，也可以手动执行optimize查询语句)，CK会通过后台任务将相同分区的多个目录合并成一个目录，目录中的索引和数据文件也会进行合并；旧分区目录不会被立刻删除，而是在之后某个时刻由后台任务删除(默认8分钟)，但是旧分区目录已经不再是激活状态(active=0)，在数据查询时会自动被过滤掉。
+- 分区目录是在数据写入过程中被创建的，伴随着新数据的写入(INSERT)，MergeTree会生成一批新的分区目录;
+- 在之后的某个时刻(写入后10-15分钟，也可以手动执行optimize查询语句)，CK会通过后台任务将相同分区的多个目录合并成一个目录，目录中的索引和数据文件也会进行合并；
+- 旧分区目录不会被立刻删除，而是在之后某个时刻由后台任务删除(默认8分钟)，但是旧分区目录已经不再是激活状态(active=0)，在数据查询时会自动被过滤掉。
 
 新目录名称的合并方式遵循以下规则：
 - MinBlockNum：取同一分区内所有目录中最小的MinBlockNum;
@@ -201,17 +205,22 @@ table_name
 - Level：取同一分区内最大Level值并加1.
 
 ### 一级索引
-MergeTree定义主键PRIMARY KEY之后，会依据index_granularity间隔(默认8192行)，为数据表生成一级索引并保存至primary.idx文件；更为常见的简化形式是直接通过ORDER BY指代主键，此时PRIMARY KEY和ORDER BY定义相同，所以索引(primary.idx)和数据(.bin)会按照相同的规则排序。
+- MergeTree定义主键PRIMARY KEY之后，会依据index_granularity间隔(默认8192行)，为数据表生成一级索引并保存至primary.idx文件；
+- 更为常见的简化形式是直接通过ORDER BY指代主键，此时PRIMARY KEY和ORDER BY定义相同，所以索引(primary.idx)和数据(.bin)会按照相同的规则排序。
 #### 稀疏索引
-一级索引primary.idx采用稀疏索引实现，稀疏索引是每一行索引标记对应一段数据；稀疏索引占用空间小，所以primary.idx内的索引数据常驻内存，取用速度极快。
+- 一级索引primary.idx采用稀疏索引实现，稀疏索引是每一行索引标记对应一段数据；
+- 稀疏索引占用空间小，所以primary.idx内的索引数据常驻内存，取用速度极快。
 #### 索引粒度
-索引粒度：index_granularity参数定义；
-MergeTree使用MarkRange表示一个具体的区间，通过start和end表示具体的范围。
-index_granularity不单只作用于一级索引(.idx)，同时也会影响数据标记(.mrk)和数据文件(.bin)。因为仅有一级索引是完不成查询工作的，他需要借助数据标记才能定位数据，所以一级索引和数据标记的间隔粒度相同，彼此对齐；而数据文件也会按照index_granularity的间隔粒度进行数据压缩。
+- 索引粒度：index_granularity参数定义；
+- MergeTree使用MarkRange表示一个具体的区间，通过start和end表示具体的范围。
+- index_granularity不单只作用于一级索引(.idx)，同时也会影响数据标记(.mrk)和数据文件(.bin)。
+- 因为仅有一级索引是完不成查询工作的，他需要借助数据标记才能定位数据，所以一级索引和数据标记的间隔粒度相同，彼此对齐；而数据文件也会按照index_granularity的间隔粒度进行数据压缩。
 #### 索引数据生成规则
-MergeTree对于稀疏索引数据的存储是很紧凑的，索引值前后相连，按照主键字段顺序紧密地排列在一起。
+MergeTree对于稀疏索引数据的存储是很紧凑的，索引值前后相连，按照主键字段顺序紧密地排列在一起。  
 #### 索引的查询过程
-索引查询就是两个数值区间的交集判断：一个区间是由基于主键的查询条件转换而来的条件区间；另一个区间是MarkRange的数值区间。
+索引查询就是两个数值区间的交集判断：  
+- 一个区间是由基于主键的查询条件转换而来的条件区间；
+- - 另一个区间是MarkRange的数值区间。
 ### 二级索引
 - MergeTree同样也支持二级索引，又称为跳数索引，它是由数据的聚合信息构建而成, 它能够为非主键字段的查询发挥作用；
 - 默认是关闭的，需要设置allow_experimental_data_skipping_indices(新版本中已经取消)才能使用；
@@ -220,42 +229,43 @@ MergeTree对于稀疏索引数据的存储是很紧凑的，索引值前后相�
 - 与一级索引一样，如果在建表语句中声明了跳数索引，则会额外生成相应的索引文件(skp_idx_[Column].idx)和标记文件(skp_idx_[Column].mrk);
 
 #### granularity和index_granularity的关系
-不同跳数索引之间，除了它们自身独有的参数index_granularity之外，还有一个共同参数granularity；
+不同跳数索引之间，除了它们自身独有的参数index_granularity之外，还有一个共同参数granularity:  
 - index_granularity定义的是数据的粒度；
-- granularity定义了聚合信息汇总的粒度；
+- granularity定义了聚合信息汇总的粒度；  
 （换言之，granularity定义了一行跳数索引能够跳过多少个index_granularity区间的数据；GRANULARITY N 中的N就是设定二级索引对一级索引粒度的粒度。）
 
-跳数索引数据的生成规则：
+跳数索引数据的生成规则：  
 - 首先，按照index_grannularity粒度间隔将数据划分成n段，总共有[0, n-1]个区间(n=total_rows/index_granularity, 向上取整)；
 - 其次，根据跳数索引定义时声明的表达式，从0区间开始依次按照index_granularity粒度从数据中获取聚合信息，每次向前移动1步(n+1)，聚合信息逐步累加；
 - 最后，当移动granularity次区间时，则汇总并生成一行跳数索引数据。
-![ck_granularity]()
+![ck_granularity](./ck_granularity.jpg)
 
-如上图，index_granularity=8192且granularity=3，则数据会按照index_granularity划分成n等份，MergeTree从第0段分区开始，以此获取聚合信息；当获取到第3个分区时(granularity=3)，则汇总并会生成第一行跳数索引数据。
+如上图，index_granularity=8192且granularity=3，则数据会按照index_granularity划分成n等份，  
+MergeTree从第0段分区开始，以此获取聚合信息；当获取到第3个分区时(granularity=3)，则汇总并会生成第一行跳数索引数据。
 
 #### 跳数索引类型
-目前MergeTree共支持4种跳数索引：minmax, set, ngrambf_v1 和 tokenbf_v1。（一张表可以同时支持多个跳数索引）
+目前MergeTree共支持4种跳数索引：minmax, set, ngrambf_v1 和 tokenbf_v1。（一张表可以同时支持多个跳数索引）  
 
-CREATE TABLE skip_test(
-	ID string,
-	Url String,
-	Code String, 
-	EventTiem Date,
-	INDEX a ID TYPE minmax GRANULARITY 5,
-	INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,
-	INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,
-	INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5
-)ENGINE=MergeTree()
-....
+CREATE TABLE skip_test(  
+	ID string,  
+	Url String,  
+	Code String,   
+	EventTiem Date,  
+	INDEX a ID TYPE minmax GRANULARITY 5,  
+	INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,  
+	INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,  
+	INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5  
+)ENGINE=MergeTree()  
+....  
 
 ### 数据存储
 #### 各列独立存储
-在MergeTree中，数据是按列存储的；每个列对应一个.bin文件，数据文件是以分区目录的形式被组织存放的，所以在.bin文件中只会保存当前分区片段内的这一部分数据。
-独立存储的优势：
+在MergeTree中，数据是按列存储的；每个列对应一个.bin文件，数据文件是以分区目录的形式被组织存放的，所以在.bin文件中只会保存当前分区片段内的这一部分数据。  
+独立存储的优势：  
 - 可以更好地进行压缩（相同类型数据放在一起）
 - 能够最小化数据扫描范围
-
-MergeTree将数据写入.bin文件的方式：
+--------
+MergeTree将数据写入.bin文件的方式：  
 - 首先，数据经过压缩，默认LZ4压缩算法；
 - 其次，数据会按照ORDER BY的声明排序；
 - 最后，数据以压缩数据块的形式被组织并写入.bin文件中。
@@ -264,19 +274,19 @@ MergeTree将数据写入.bin文件的方式：
 - 一个压缩数据块由头信息和压缩数据两部分构成。
 - 头信息占9个字节，由1个UInt8(1字节)整型和2个UInt32(4字节)整型组成，分别代表：使用的压缩算法类型、压缩后数据大小 和 压缩前数据大小。
 
-![压缩数据块示意图]()
+![压缩数据块示意图](./压缩数据块.jpg)
 
-(CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息)
+(CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息)  
 - 每个压缩数据块的体积，按照其压缩之前的数据字节大小，都被严格控制在64KB-1MB之间，这个上下限分别由min_compress_size(默认65536)和max_compress_block_size(默认1048576)参数指定；
 - 如果一个间隔(index_granularity)内数据大小 小于 64KB，则继续获取下一批次数据，直到累积到 size>=64KB，生成一个压缩数据块；如果一个间隔内数据 64KB<= size <= 1MB, 则直接被压缩成一个数据块；如果size>1MB, 则首先按照1MB截断并生成一个压缩数据块，剩余数据继续依照上述规则执行。
 
-数据压缩目的：
+数据压缩目的：  
 - 有效减小数据大小，降低存储空间并加速数据传输效率； 但数据压缩和解压动作会带来额外性能损耗，所以需要控制被压缩数据的大小，以求在性能损耗和压缩率之间寻求一种平衡；
 - 在具体读取某列数据时(.bin文件)，首先加载压缩数据到内存，并解压；通过压缩数据块，可以在不读取整个.bin文件的情况下将读取粒度降低到压缩数据块级别，从而进一步缩小数据读取范围。
 
 ### 数据标记
-数据标记为 一级索引(.idx)和数据文件(.bin)之间建立联系；
-数据标记记录了两个重要信息：
+数据标记为 一级索引(.idx)和数据文件(.bin)之间建立联系；  
+数据标记记录了两个重要信息：  
 - 记录一级索引的索引信息；
 - 记录数据在数据块中的偏移量。
 
@@ -284,32 +294,32 @@ MergeTree将数据写入.bin文件的方式：
 - 数据标记 和索引区间 是对齐的，均按照index-granularity的粒度间隔；所以只需要通过索引区间的下标就可以直接找到对应的数据标记编号；
 - 数据标记文件也与数据文件一一对应，即每一列字段[Column].bin文件都有一个与之对应的[Column].mrk数据标记文件，用于记录数据在.bin文件中的起始偏移量。
 
-一行 标记数据 使用一个元组表示一个片段的数据(默认8192行)，元组内包含两个整型数值，分别是：
+一行*标记数据*使用一个元组表示一个片段的数据(默认8192行)，元组内包含两个整型数值，分别是：  
 - 数据在.bin压缩文件中的 压缩数据块的起始偏移量；
 - 数据在 解压数据块 中的起始偏移量。
 
-标记数据 与一级索引 不同，它并不能常驻内存，而是使用LRU（最近最少使用）缓存策略加快其取用速度。
+*标记数据*与*一级索引*不同，它并不能常驻内存，而是使用LRU（最近最少使用）缓存策略加快其取用速度。  
 
 #### 数据标记的工作方式
-MergeTree引擎在查找数据时，整个过包括两个步骤：读取压缩数据块 和 读取数据；
-![mrk.jpg]()
+MergeTree引擎在查找数据时，整个过包括两个步骤：*读取压缩数据块*和*读取数据*；  
+![mrk.jpg](./mrk.jpg)
 
-上图说明：
-前提： 
+上图说明：  
+前提：  
 - JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
 - 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
 - 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
 
-MergeTree定位压缩数据块并读取数据：
-1. 读取压缩数据块：
-MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：
-- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间；
-	(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)
-- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；
-2. 读取数据：
-MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：
-- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；
-- 解压之后，依据解压数据块中的起始偏移量读取数据。
+MergeTree定位压缩数据块并读取数据：  
+1. 读取压缩数据块：  
+MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：  
+- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间；  
+	(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)  
+- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；  
+2. 读取数据：  
+MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：  
+- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；  
+- 解压之后，依据解压数据块中的起始偏移量读取数据。  
 
 ### 对于分区、索引、标记和压缩数据的协同总结
 #### 写入过程
@@ -317,64 +327,64 @@ MergeTree并不需要整段解压 压缩数据块，可以根据需要，以inde
 2. 按照index_granularity索引粒度，会分别生成primary.idx一级索引(如果声明了二级索引，还会创建二级索引)、每一个列字段的.mrk数据标记和.bin压缩数据文件；
 
 #### 查询过程
-- 查询的本质可以看做一个不断缩小数据范围的过程；
+- 查询的本质可以看做一个不断缩小数据范围的过程；  
 - 理想情况下MergeTree首先依次借助分区索引、一级索引和二级索引，将数据扫描范围缩至最小，然后借助标记数据，将需要解压和计算的数据范围缩至最小；
 - 即使MergeTree不能预先减小数据范围，它会扫描所有的分区目录以及目录内索引短的最大区间，虽然不能减少数据范围，但是仍然能够借助数据标记，以多线程的形式同时读取多个压缩数据块，以提升性能。
 
 ## MergeTree系列表引擎 
 ### MergeTree
-前面已经介绍MergeTree提供了数据分区、一级索引和二级索引等功能，在此进一步介绍MergeTree家族独有另外两项能力：数据TTL 与 存储策略。
+前面已经介绍MergeTree提供了数据分区、一级索引和二级索引等功能，在此进一步介绍MergeTree家族独有另外两项能力：数据TTL 与 存储策略。  
 
 #### 数据TTL
 - TTL Time to Live，数据的存活时间；MergeTree可以为某个字段或者整个表设置TTL，如果同时设置列级别和表级别TTL，则会以先到期的TTL为主;
 - TTL需要依托某个DateTime或Date类型的字段，通过对这个字段;
 - INTERVAL支持SECOND、MINUTE、HOUR、DAY、WEEK、MONTH、QUARTER 和 YEAR。
 ##### 列级别TTL
-TTL到期之后，列值会被还原为对应数据类型的默认值。
-CREATE TABLE ttl_table_v1(
-	id String,
-	create_time DateTime, 
-	code String TTL create_time + INTERVAL 10 SECOND,
-	type UInt8 TTL create_time + INTERVAL 10 SECOND
-)ENGINE=MergeTree
-PARTITION BY toYYYYMM(create_time)
-ORDER BY id
-
-- 修改列字段的TTL，或者添加列字段的TTL：
+TTL到期之后，列值会被还原为对应数据类型的默认值。  
+CREATE TABLE ttl_table_v1(    
+	id String,  
+	create_time DateTime,   
+	code String TTL create_time + INTERVAL 10 SECOND,  
+	type UInt8 TTL create_time + INTERVAL 10 SECOND  
+)ENGINE=MergeTree  
+PARTITION BY toYYYYMM(create_time)  
+ORDER BY id  
+---------
+- 修改列字段的TTL，或者添加列字段的TTL：  
 - ALTER TABLE ttl_table_v1 MODIFY COLUMN code String TTL create_time + INTERVAL 1 DAY
 - 目前CK没有提供取消列级别TTL的方法。
 
 ##### 表级别TTL
-TTL到期之后，会将过期的数据行整行删除。
+TTL到期之后，会将过期的数据行整行删除。  
 
-CREATE TABLE ttl_table_v2(
-	id String,
-	create_time DateTime,
-	code String TTL create_time + INTERVAL 1 MINUTE,
-	type UInt8
-)ENGINE=MergeTree
-PARTITION BY toYYYYMM(create_time)
-ORDER BY create_time
-TTL create_time + INTERVAL 1 DAY
+CREATE TABLE ttl_table_v2(  
+	id String,  
+	create_time DateTime,  
+	code String TTL create_time + INTERVAL 1 MINUTE,  
+	type UInt8  
+)ENGINE=MergeTree  
+PARTITION BY toYYYYMM(create_time)  
+ORDER BY create_time  
+TTL create_time + INTERVAL 1 DAY  
 
-- 修改表的TTL：
+- 修改表的TTL：  
 - ALERT TABLE ttl_table_v2 MODIFY TTL create_time + INTERVAL 3 DAY
 - 表级别TTL目前也没有取消方法。
 
-##### TTL运行机理
+##### TTL运行机理  
 - 如果设置了TTL，在写入数据时，会以在分区目录下创建ttl.txt文件；ttl.txt文件通过JSON配置保存TTL的相关信息：columns用于保存列级别TTL信息，table由于保存表级别TTL信息。
 - 只有在合并分区时，才会触发删除TTL过期数据的逻辑；
 - 在选择删除分区时，会使用贪婪算法，算法规则是尽可能找到会最早过期的，同时年纪又是最老的分区（合并次数更多，MaxBlockNum更大的）；
 - 一个分区中某列数据过期，合并之后的新分区目录中将不会包含这个字段的数据文件(.bin和.mrk)
 - TTL默认的合并频率由MergeTree的merge_with_ttl_timeout参数控制，默认86400秒，即1天。它维护的是一个转悠的TTL任务队列，有别于MergeTree的常规合并任务，如果这个值被设置的过小，可能会带来性能的损耗；
-- 可以使用optimize命令强制触发合并：
-	optimize TABLE table_name  //触发一个分区的合并
-	optimize TABLE table_name FINAL   //触发所有分区合并
-- CK虽然没有提供删除TTL的方法，但是提供了控制全局TTL合并任务的启停方法：
-	SYSTEM STOP/START TTL MERGES      //还是不能做到按每张数据表启停
+- 可以使用optimize命令强制触发合并：  
+	optimize TABLE table_name  //触发一个分区的合并  
+	optimize TABLE table_name FINAL   //触发所有分区合并  
+- CK虽然没有提供删除TTL的方法，但是提供了控制全局TTL合并任务的启停方法：  
+	SYSTEM STOP/START TTL MERGES      //还是不能做到按每张数据表启停  
 
 #### 多路径存储策略
-目前有三种存储策略：
+目前有三种存储策略：  
 1. 默认策略：所有分区会自动保存到config.xml配置中的path指定路径下；
 2. JBOD策略：Just a Bunch of Disks，是一种轮询策略；这种策略效果类似RAID 0，可以降低单块磁盘的负载，在一定条件下能够增加数据并行读写的性能；
 3. HOT/COLD策略：适合服务器挂载了不同类型磁盘的场景；
@@ -382,17 +392,17 @@ TTL create_time + INTERVAL 1 DAY
 ### ReplacingMergeTree
 - MergeTree拥有主键，但是它的主键没有唯一键的约束，这就意味着即便多行数据的主键相同，他们还是能够被正常写入的；
 - ReplacingMergeTree则能够在合并分区的时候删除重复数据，确实也在‘一定程度’上解决了重复数据的问题。（以分区为单位删除重复数据）;
-- 创建：ENGINE=ReplacingMergeTree(ver)   //ver是选填，会指定一个UInt*、Date或者DateTime类型的字段作为版本号，这个参数决定了数据去重时所使用的算法。
-
-CREATE TABLE replace_table(
-	id String,
-	code String, 
-	create_time DateTime
-)ENGINE=ReplacingMergeTree(create_time)
-PARTITION BY toYYYYMM(create_time)
-ORDER BY (id, code)
-PRIMARY KEY id
-
+- 创建：ENGINE=ReplacingMergeTree(ver)   //ver是选填，会指定一个UInt*、Date或者DateTime类型的字段作为版本号，这个参数决定了数据去重时所使用的算法。  
+  
+CREATE TABLE replace_table(  
+	id String,  
+	code String,   
+	create_time DateTime  
+)ENGINE=ReplacingMergeTree(create_time)  
+PARTITION BY toYYYYMM(create_time)  
+ORDER BY (id, code)  
+PRIMARY KEY id  
+  
 ----
 - ORDER BY 所声明的表达式是后续作为判断数据是否重复的依据；
 - 只有在合并分区的时候才会触发删除重复数据的逻辑；
@@ -414,22 +424,22 @@ PRIMARY KEY id
 - 如果同时定义了ORDER BY和PRIMARY KEY，那便是明确希望它俩不同；同时声明时，MergeTree会强制要求PRIMARY KEY字段必须是ORDER BY的前缀。
 -----
 
-SummingMergeTree使用：
-CREATE TABLE  summing_table(
-	id String,
-	city, String,
-	v1 UInt32,
-	v2 Float64,
-	create_time DateTime
-)ENGINE=SummingMergeTree()
-PARTITION BY toYYYYMM(create_time)
-ORDER BY (id, city)
-PRIMARY KEY id
+SummingMergeTree使用：  
+CREATE TABLE  summing_table(  
+	id String,  
+	city, String,  
+	v1 UInt32,  
+	v2 Float64,  
+	create_time DateTime  
+)ENGINE=SummingMergeTree()  
+PARTITION BY toYYYYMM(create_time)  
+ORDER BY (id, city)  
+PRIMARY KEY id  
 
-//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段。
-//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总。
+//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段。  
+//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总。  
 
-SummingMergeTree处理逻辑：
+SummingMergeTree处理逻辑：  
 1. 用ORDER BY排序键作为聚合数据的条件KEY；
 2. 只有在合并分区时才会触发汇总的逻辑；
 3. 以分区为单位进行汇总；
@@ -442,54 +452,54 @@ SummingMergeTree处理逻辑：
 - ENGINE=AggregatingMergeTree()   *//没有任何参数；在分区合并时会按照ORDER BY聚合；可以通过AggregateFunction来定义聚合函数；*
 
 -----
-CREATE TABLE agg_table(
-	id String,
-	city String,
-	code AggregateFunction(uniq, String),
-	value AggregateFunction(sum, UInt32),
-	create_time DateTime
-)ENGINE=AggregatingMergeTree()
-PARTITION BY toYYYYMM(create_time)
-ORDER BY (id, city)
-PRIMARY KEY id
+CREATE TABLE agg_table(  
+	id String,  
+	city String,  
+	code AggregateFunction(uniq, String),  
+	value AggregateFunction(sum, UInt32),  
+	create_time DateTime  
+)ENGINE=AggregatingMergeTree()  
+PARTITION BY toYYYYMM(create_time)  
+ORDER BY (id, city)  
+PRIMARY KEY id  
 ------
 
 - AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
-*写入数据*
-INSERT INTO TABLE agg_table
-SELECT 'A00', 'wuhan',
-uniqState('code1'),
-sumState(toUInt32(100)),
-'2020-01-01 00:00:01'
+*写入数据*  
+INSERT INTO TABLE agg_table  
+SELECT 'A00', 'wuhan',  
+uniqState('code1'),  
+sumState(toUInt32(100)),  
+'2020-01-01 00:00:01'  
 
-*查询数据*
-SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table
-GROUP BY id, city
+*查询数据*  
+SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table  
+GROUP BY id, city  
 
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
-*底表*
-//用于存储全量的明细数据
-CREATE TABLE agg_table_basic(
-	id String, 
-	city String,
-	code String,
-	value UInt32
-)ENGINE=MergeTree()
-PARTITION BY city
-ORDER BY (id, city)
-
-*物化视图*
-CREATE MATERIALIZED VIEW agg_view
-ENGINE=AggregatingMergeTree()
-PARTITION BY city
-ORDER BY (id, city)
-AS SELECT 
-	id, 
-	city, 
-	uniqState(code) AS code,
-	sumState(value) AS value
-FROM agg_table_basic
-GROUP BY id, city
+*底表*  
+//用于存储全量的明细数据  
+CREATE TABLE agg_table_basic(  
+	id String,   
+	city String,  
+	code String,  
+	value UInt32  
+)ENGINE=MergeTree()  
+PARTITION BY city  
+ORDER BY (id, city)    
+  
+*物化视图*  
+CREATE MATERIALIZED VIEW agg_view  
+ENGINE=AggregatingMergeTree()  
+PARTITION BY city  
+ORDER BY (id, city)  
+AS SELECT   
+	id,   
+	city,   
+	uniqState(code) AS code,  
+	sumState(value) AS value  
+FROM agg_table_basic  
+GROUP BY id, city  
  
 
 	
