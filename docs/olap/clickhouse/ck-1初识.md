@@ -308,6 +308,7 @@ MergeTree将数据写入.bin文件的方式：
 #### 数据标记的工作方式
 MergeTree引擎在查找数据时，整个过包括两个步骤：*读取压缩数据块*和*读取数据*；  
 <img src="./mrk.jpg" width = "500" height = "300" alt="mrk" align=center />
+<iframe height=500 width=500 src="./mrk.jpg"></iframe>
 
 上图说明：  
 前提：  
