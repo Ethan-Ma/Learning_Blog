@@ -243,7 +243,7 @@ MergeTree对于稀疏索引数据的存储是很紧凑的，索引值前后相�
 - 首先，按照index_grannularity粒度间隔将数据划分成n段，总共有[0, n-1]个区间(n=total_rows/index_granularity, 向上取整)；
 - 其次，根据跳数索引定义时声明的表达式，从0区间开始依次按照index_granularity粒度从数据中获取聚合信息，每次向前移动1步(n+1)，聚合信息逐步累加；
 - 最后，当移动granularity次区间时，则汇总并生成一行跳数索引数据。
-<iframe height=300 width=200 src="https://gitee.com/ethanjh/Learning_Blog/raw/master/docs/olap/clickhouse/ck_granularity.jpg"></iframe>
+![ck_granularity](./ck_granularity.jpg =300x200)
 
 如上图，index_granularity=8192且granularity=3，则数据会按照index_granularity划分成n等份，  
 MergeTree从第0段分区开始，以此获取聚合信息；当获取到第3个分区时(granularity=3)，则汇总并会生成第一行跳数索引数据。
@@ -278,8 +278,7 @@ MergeTree将数据写入.bin文件的方式：
 #### 压缩数据块
 - 一个压缩数据块由头信息和压缩数据两部分构成。
 - 头信息占9个字节，由1个UInt8(1字节)整型和2个UInt32(4字节)整型组成，分别代表：使用的压缩算法类型、压缩后数据大小 和 压缩前数据大小。
-<iframe height=300 width=200 src="https://gitee.com/ethanjh/Learning_Blog/raw/master/docs/olap/clickhouse/压缩数据块.jpg"></iframe>
-
+![压缩数据块](./压缩数据块.jpg =300x200)
 
 (CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息)  
 - 每个压缩数据块的体积，按照其压缩之前的数据字节大小，都被严格控制在64KB-1MB之间，这个上下限分别由min_compress_size(默认65536)和max_compress_block_size(默认1048576)参数指定；
@@ -307,7 +306,7 @@ MergeTree将数据写入.bin文件的方式：
 
 #### 数据标记的工作方式
 MergeTree引擎在查找数据时，整个过包括两个步骤：*读取压缩数据块*和*读取数据*；  
-<iframe height=300 width=200 src="https://gitee.com/ethanjh/Learning_Blog/raw/master/docs/olap/clickhouse/mrk.jpg"></iframe>
+![mrk](./mrk.jpg =300x200)
 
 上图说明：  
 前提：  
