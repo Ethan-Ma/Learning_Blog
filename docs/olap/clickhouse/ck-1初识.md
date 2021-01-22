@@ -278,7 +278,6 @@ MergeTree将数据写入.bin文件的方式：
 #### 压缩数据块
 - 一个压缩数据块由头信息和压缩数据两部分构成。
 - 头信息占9个字节，由1个UInt8(1字节)整型和2个UInt32(4字节)整型组成，分别代表：使用的压缩算法类型、压缩后数据大小 和 压缩前数据大小。<br>
-<img src="https://raw.githubusercontent.com/Ethan-Ma/Learning_Blog/master/docs/olap/clickhouse/%E5%8E%8B%E7%BC%A9%E6%95%B0%E6%8D%AE%E5%9D%97.jpg" width="50%" height="50%">
 ![压缩数据块](./compressed_data.jpg)
 
 (CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息)  
