@@ -344,6 +344,7 @@ MergeTree并不需要整段解压 压缩数据块，可以根据需要，以inde
 - TTL Time to Live，数据的存活时间；MergeTree可以为某个字段或者整个表设置TTL，如果同时设置列级别和表级别TTL，则会以先到期的TTL为主;
 - TTL需要依托某个DateTime或Date类型的字段，通过对这个字段;
 - INTERVAL支持SECOND、MINUTE、HOUR、DAY、WEEK、MONTH、QUARTER 和 YEAR。
+
 ##### 列级别TTL
 
 TTL到期之后，列值会被还原为对应数据类型的默认值。<br> 
@@ -476,7 +477,7 @@ INSERT INTO TABLE agg_table<br>
 SELECT 'A00', 'wuhan', <br>
 uniqState('code1'), <br>
 sumState(toUInt32(100)),<br>
-'2020-01-01 00:00:01' <br>
+'2020-01-01 00\:00\:01' <br>
 
 - *查询数据* <br>
 SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br> 
