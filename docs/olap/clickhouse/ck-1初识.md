@@ -476,7 +476,7 @@ INSERT INTO TABLE agg_table<br>
 SELECT 'A00', 'wuhan', <br>
 uniqState('code1'), <br>
 sumState(toUInt32(100)),<br>
-'2020-01-01 00\:00\:01' <br>
+'`2020-01-01 00:00:01`' <br>
 
 - *查询数据* <br>
 SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br> 
@@ -543,10 +543,10 @@ ORDER BY id<br>
 
 - 与其他MergeTree变种一样，CollapsingMergTree同样是以ORDER BY排序键作为后续判断数据唯一性的依据;<br>
 - 修改操作：( *ORDER BY字段与原始数据相同(其他字段可以不同)，sign取反-1*)
-	- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1*)
+	- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *1*)
 	- 修改操作：
-		- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1*)
-		- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', *920*, '2020-01-02 00:00:00', *1*)
+		- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *-1*)
+		- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', *920*, '`2020-01-02 00:00:00`', *1*)
 - 删除操作：( *ORDER BY字段与原始数据相同，sign取反-1*)
 	- 删除前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1*)
 	- 删除操作：&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1*)
@@ -582,10 +582,10 @@ ORDER BY id<br>
 	- 定义ver字段后，它会自动将ver字段作为排序条件，上述实例排序是：ORDER BY id, ver DESC 
 	- 所以无论写入顺序如何，折叠时都能够回到正确顺序。
 ----
-- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1, 1*)
+- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *1, 1*)
 - 修改操作：
-	- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1, 1*)
-	- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 920, '2020-01-02 00:00:00', *1, 2*)
+	- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *-1, 1*)
+	- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 920, '`2020-01-02 00:00:00`', *1, 2*)
 
 ## 各种MergeTree之间的关系总结
 
