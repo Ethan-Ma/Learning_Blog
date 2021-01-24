@@ -484,7 +484,7 @@ GROUP BY id, city <br>
 
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
 - *底表* <br>
-//用于存储全量的明细数据 <br>
+//用于存储全量的明细数据，并以此对外提供实时查询。<br>
 CREATE TABLE agg_table_basic(<br>
 &nbsp; &nbsp; &nbsp; &nbsp; id String,<br>
 &nbsp; &nbsp; &nbsp; &nbsp; city String,<br>
@@ -495,6 +495,7 @@ PARTITION BY city <br>
 ORDER BY (id, city) <br>
  <br>
 - *物化视图*<br>
+// 用于特定场景的数据查询，相比MergeTree他拥有更高的性能。<br>
 CREATE MATERIALIZED VIEW agg_view<br>
 ENGINE=AggregatingMergeTree() <br>
 PARTITION BY city <br>
@@ -506,4 +507,87 @@ AS SELECT <br>
 &nbsp; &nbsp; &nbsp; &nbsp; sumState(value) AS value<br>
 FROM agg_table_basic <br>
 GROUP BY id, city <br>
+
+- 新增数据时，面向的对象是底表MergeTree：<br>
+INSERT INTO TABLE agg_table_basic<br>
+VALUES('A001', 'wuhan', 'code1', 100), ('A002', 'bejing', 'code2', 200)<br>
+//数据会自动同步到 *物化视图*, 并按照定义的规则处理数据:<br>
+- 查询：<br>
+	> SELECT id, *sumMerge*(value), *uniqMerge*(code), FROM agg_view GROUP BY id, city <br>
+-----
+AggregatingMergeTree的处理逻辑：<br>
+1. 用ORDER BY 排序键作为聚合数据的条件KEY；
+2. 使用AggregateFunction字段类型定义聚合函数的类型以及聚合的字段；
+3. 只有在合并分区是才会触发聚合计算的逻辑；
+4. 以数据分区作为聚合单位；
+5. 进行数据计算时，分区内数据已经是基于ORDER BY排序，所以能够找到相邻且拥有相同聚合KEY的数据；
+6. 聚合数据时，同一分区拥有相同分区Key的数据会被合并成一行，对于非主键、非AggregateFuntion字段，则会取用第一行数据；
+7. AggregateFuntion字段采用二进制存储，在写入数据时需先调用*State函数，读取数据时需调用*Merge函数，*表示定义时使用的聚合函数；
+8. AggregatingMergeTree通常作为物化视图的表引擎，与普通MergeTree配合使用。
+
+### CollapsingMergeTree
+- 对于CK的数据源文件修改是代价很高的，相较于直接修改源文件，它会将修改和删除操作转化为 *新增操作*，即以增代删;<br>
+- CollapsingMergeTree(折叠合并树)就是一种以增代删的思路，它支持行级的数据修改和删除的表引擎；<br>
+- 它通过定义一个sign标记位字段(Int8)来记录数据行的状态，sign=1表示有效，sign=-1表示被删除；<br>
+- 当CollapsingMergeTree合并分区时，同一分区内，sign标记为1和-1 的一组数据会被抵消删除，犹如一张瓦楞纸折叠一般；<br>
+----
+实例：<br>
+CREATE TABLE collapse_table(<br>
+&nbsp; &nbsp; &nbsp; &nbsp;id String, <br>
+&nbsp; &nbsp; &nbsp; &nbsp;code Int32, <br>
+&nbsp; &nbsp; &nbsp; &nbsp;create_time DateTime, <br>
+&nbsp; &nbsp; &nbsp; &nbsp;sign Int8 <br>
+)ENGINE=CollapsingMergeTree(sign)<br>
+PARTITION BY toYYYYMM(create_time)<br>
+ORDER BY id<br>
+
+- 与其他MergeTree变种一样，CollapsingMergTree同样是以ORDER BY排序键作为后续判断数据唯一性的依据;<br>
+- 修改操作：( *ORDER BY字段与原始数据相同(其他字段可以不同)，sign取反-1*)
+	- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1*)
+	- 修改操作：
+		- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1*)
+		- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', *920*, '2020-01-02 00:00:00', *1*)
+- 删除操作：( *ORDER BY字段与原始数据相同，sign取反-1*)
+	- 删除前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1*)
+	- 删除操作：&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1*)
+<br>
+- 注意事项：
+	1. 折叠数据不是实时触发的，也是在合并分区时才会触发( *所以在合并之前用户还是会看到旧数据*)；
+		- 要么查询前，手动执行optimize TABLE table_name FINAL 触发分区合并；
+		- 要么修改SQL语句：
+			- 原始SQL：SELECT id, SUM(code), COUNT(code), AVG(code), UNIQ(code) FROM collapse_table GROUP BY id
+			- 现在SQL：SELECT id, SUM(code * sign), COUNT(code * sign), AVG(code * sign), uniq(code * sign) FROM collapse_table GROUP BY id HAVING SUM(sign)>0
+	2. 只有相同分区内数据才会被折叠；
+	3. 它是基于ORDER BY排序的，对于写入数据的顺序有严格要求：
+		- 正常先写sign=1，再写sign=-1；如果先写sign=-1，再写sign=1，则不能够折叠。
+		- 如果写入程序是多线程，就不能保证数据的写入顺序，CollapsingMergeTree的工作机制就会出问题。
+
+### VersionedCollapsingMergeTree
+- 它的作用与CollapsingMergeTree完全相同，不同之处是它对数据写入顺序没有要求；
+- 在同一分区内，任意顺序的数据都能够完成折叠操作，依据是版本号。
+
+-----
+- 实例：
+CREATE TABLE ver_collapse_table(<br>
+ &nbsp; &nbsp; &nbsp; &nbsp; id String, <br> 
+ &nbsp; &nbsp; &nbsp; &nbsp; code Int32, <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; create_time DateTime, <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; sign Int8, <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; ver UInt8<br>
+)ENGINE=VersionCollapsingMergeTree(sign, ver)<br>
+PARTITION BY toYYYYMM(create_time)<br>
+ORDER BY id<br>
+-----
+- VersionCollapsingMergeTre是如何利用版本号字段的呢？
+	- 定义ver字段后，它会自动将ver字段作为排序条件，上述实例排序是：ORDER BY id, ver DESC 
+	- 所以无论写入顺序如何，折叠时都能够回到正确顺序。
+----
+- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *1, 1*)
+- 修改操作：
+	- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '2020-01-02 00:00:00', *-1, 1*)
+	- 再添加修改数据： &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 920, '2020-01-02 00:00:00', *1, 2*)
+
+## 各种MergeTree之间的关系总结
+
+
 
