@@ -600,16 +600,9 @@ ORDER BY id<br>
 ### 7.1 ReplicatedMergeTree
 - 此前介绍了7中MergeTree，此处介绍ReplicatedMergeTree系列。ReplicatedMergeTree于普通MergeTree有什么区别？
  ![replicated](./replicated.jpg)
- ```
-  ———————————————      ——————————————————————————————
- ｜							｜    ｜MergeTree                   ｜ 
- ｜             ｜    ｜ReplacingMergeTree          ｜
- ｜Replicated   ｜    ｜SummingMergeTree            ｜
- ｜支持数据副本 ｜ +  ｜AggregatingMergeTree        ｜
- ｜             ｜    ｜CollapsingMergeTree         ｜
- ｜             ｜    ｜VersionedCollapsingMergeTree｜
-  ---------------      -----------------------------
- ```
+
+ ![replicated_merge](./replicated_merge.jpg)
+
 - ReplicatedMergeTree在MergeTree能力的基础上增加了分布式协同的能力，其借助ZooKeeper的消息日志广播功能，实现了副本实例之间的数据同步功能；
 - 只有使用了ReplicatedMergeTree复制表系列引擎，才能应用副本的能力（即使用ReplicatedMergeTree的数据表就是副本）；
 ---------
@@ -617,8 +610,7 @@ ORDER BY id<br>
 - 内存：数据会被先写入内存缓冲区；
 - 本地磁盘：接着数据会被写入tmp临时分区目录，等待完成写入后再将临时目录重命名为正式分区目录。
 
-ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步在ZooKeeper中创建一系列监听节点，并以此实现多个节点之间的通信；<br>
- *但是，在整个通信过程中，ZooKeeper并不会涉及表数据的传输。*<br>
+ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步在ZooKeeper中创建一系列监听节点，并以此实现多个节点之间的通信； *但是，在整个通信过程中，ZooKeeper并不会涉及表数据的传输。*<br>
  
 ### 7.2 ReplicatedMergeTree特点
 - 依赖ZooKeeper：只有在执行INSERT和ALTER操作的时候，才需要借助ZooKeeper的分布式协同能力，实现多个副本之间的同步；在查询副本的时候不需要ZooKeeper；
