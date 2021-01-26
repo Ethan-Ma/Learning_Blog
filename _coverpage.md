@@ -1,6 +1,6 @@
-<h1 align="left">          BLOG</h1>
+<h1 align="center">BLOGS</h1>
 
-&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [开始阅读](#Learning_Blog)
+[开始阅读](#Learning_Blog)
 
 
 
