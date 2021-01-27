@@ -451,7 +451,7 @@ SummingMergeTree处理逻辑：<br>
 3. 以分区为单位进行汇总；
 4. 在进行数据汇总时，因为分区内数据已经是基于ORDER BY排序，所以能够找到相邻且拥有相同聚合KEY的数据；
 5. 对于汇总字段会进行SUM计算，对于非汇总字段则会取第一行数据；
-6. *支持嵌套结构，但列字段名称必须以Map作为后缀；嵌套类型中默认以第一个字段作为聚合Key，除第一个字段外，任何名称以Key、Id或Type为后缀的字段都将和第一个字段一起组成复合Key。*
+6. **支持嵌套结构，但列字段名称必须以Map作为后缀；嵌套类型中默认以第一个字段作为聚合Key，除第一个字段外，任何名称以Key、Id或Type为后缀的字段都将和第一个字段一起组成复合Key。**
 
 ### 6.4 AggregatingMergeTree
 - 它是SummingMergeTree的升级版，但是可以自定义聚合函数；
@@ -471,19 +471,19 @@ PRIMARY KEY id <br>
 ------
 
 - AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
-- *写入数据* <br>
+- **写入数据** <br>
 INSERT INTO TABLE agg_table<br>
 SELECT 'A00', 'wuhan', <br>
 uniqState('code1'), <br>
 sumState(toUInt32(100)),<br>
 '`2020-01-01 00:00:01`' <br>
 
-- *查询数据* <br>
+- **查询数据** <br>
 SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br> 
 GROUP BY id, city <br>
 
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
-- *底表* <br>
+- **底表** <br>
 //用于存储全量的明细数据，并以此对外提供实时查询。<br>
 CREATE TABLE agg_table_basic(<br>
 &nbsp; &nbsp; &nbsp; &nbsp; id String,<br>
@@ -494,7 +494,7 @@ CREATE TABLE agg_table_basic(<br>
 PARTITION BY city <br>
 ORDER BY (id, city) <br>
  <br>
-- *物化视图*<br>
+- **物化视图**<br>
 // 用于特定场景的数据查询，相比MergeTree他拥有更高的性能。<br>
 CREATE MATERIALIZED VIEW agg_view<br>
 ENGINE=AggregatingMergeTree() <br>
@@ -542,7 +542,7 @@ PARTITION BY toYYYYMM(create_time)<br>
 ORDER BY id<br>
 
 - 与其他MergeTree变种一样，CollapsingMergTree同样是以ORDER BY排序键作为后续判断数据唯一性的依据;<br>
-- 修改操作：( *ORDER BY字段与原始数据相同(其他字段可以不同)，sign取反-1*)
+- 修改操作：( **ORDER BY字段与原始数据相同(其他字段可以不同)，sign取反-1**)
 	- 修改前原始数据插入：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *1*)
 	- 修改操作：
 		- 先标记原始数据失效：INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *-1*)
@@ -552,7 +552,7 @@ ORDER BY id<br>
 	- 删除操作：&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; INSERT INTO TABLE collapse_table VALUES('A001', 100, '`2020-01-02 00:00:00`', *-1*)
 <br>
 - 注意事项：
-	1. 折叠数据不是实时触发的，也是在合并分区时才会触发( *所以在合并之前用户还是会看到旧数据*)；
+	1. 折叠数据不是实时触发的，也是在合并分区时才会触发( **所以在合并之前用户还是会看到旧数据**)；
 		- 要么查询前，手动执行optimize TABLE table_name FINAL 触发分区合并；
 		- 要么修改SQL语句：
 			- 原始SQL：SELECT id, SUM(code), COUNT(code), AVG(code), UNIQ(code) FROM collapse_table GROUP BY id
@@ -593,7 +593,7 @@ ORDER BY id<br>
 - 除了MergeTree之外的其他6个变种表引擎的Merge合并逻辑，全都是建立在MergeTree基础之上的，且均继承于MergeTree的MergingSortedBlockInputStream;
 - MergingSortedBlockInputStream的主要作用是按照ORDER BY的规则保持新分区数据的有序性。
 
-## 7. 副本于分片
+## 7. 副本与分片
 - 副本主要是防止数据丢失，增加数据存储的冗余；
 - 分片主要是实现数据的水平切分。
 
@@ -610,10 +610,277 @@ ORDER BY id<br>
 - 内存：数据会被先写入内存缓冲区；
 - 本地磁盘：接着数据会被写入tmp临时分区目录，等待完成写入后再将临时目录重命名为正式分区目录。
 
-ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步在ZooKeeper中创建一系列监听节点，并以此实现多个节点之间的通信； *但是，在整个通信过程中，ZooKeeper并不会涉及表数据的传输。*<br>
+ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步在ZooKeeper中创建一系列监听节点，并以此实现多个节点之间的通信；<br>
+**但是，在整个通信过程中，ZooKeeper并不会涉及表数据的传输。**<br>
  
 ### 7.2 ReplicatedMergeTree特点
 - 依赖ZooKeeper：只有在执行INSERT和ALTER操作的时候，才需要借助ZooKeeper的分布式协同能力，实现多个副本之间的同步；在查询副本的时候不需要ZooKeeper；
-- 
+- 表级别的副本：可以自定义副本数量，以及副本 在集群内的分布位置；
+- 多主架构(Multi Master)：可以在任意副本上执行INSERT和ALERT操作，这些操作会借助ZooKeeper的协同能力被分发到每个副本上以本地形式执行；
+- Block数据块：在执行INSERT写入数据时，会依据max_insert_block_size(默认1048576行)将数据切分成若干个Block数据块，所以数据块是数据写入的基本单元，并且具有写入的原子性和唯一性；
+- 原子性：写入数据时，以Block为操作单元；
+- 唯一性：写入数据块时，它会按照Block的数据顺序、数据行和数据大小等指标，计算Hash信息摘要并记录在案；如果后续有相同Hash摘要信息的Block写入，则会被忽略，可以预防Block被重复写入。
 
+### 7.3 副本定义
+- 定义方式：ENGINE=ReplicatedMergeTree('zk_path', 'replica_name')
+	- zk_path：用于指定在ZooKeeper中创建的数据表路径，可以参考：/clickhouse/tables/{shard}/table_name //(shard表示分片的编号01、02)；
+	- replica_name：用于定义在ZooKeeper中创建的副本名称，该名称是区别副本实例的唯一标识；通常命名方式是使用所在服务器的域名命名；
+----
+- 多分片、一个副本的情形：
+	//分片1<br>
+	ReplicatedMergeTree('/clickhouse/tables/01/test_1', 'ch5.nauu.com')<br>
+	ReplicatedMergeTree('/clickhouse/tables/01/test_1', 'ch6.nauu.com')<br>
+	
+	//分片2<br>
+	ReplicatedMergeTree('/clickhouse/tables/02/test_1', 'ch7.nauu.com')<br>
+	ReplicatedMergeTree('/clickhouse/tables/02/test_1', 'ch8.nauu.com')<br>
+----
+### 7.4 ReplicatedMergeTree原理解析
+#### 7.4.1 数据结构
+- ReplicatedMergeTree核心逻辑大量运用了ZooKeeper的能力，以实现多ReplicatedMergeTree副本实例之间的协同，包括主副本选举、副本状态感知、操作日志分发、任务队列和BlockID去重判断等；
+- 在执行 INSERT数据写入、MERGE分区合并 和 MUTATION修改操作的时候，都会涉及与ZooKeeper的通信，但通信过程不涉及表数据的传输；
+- 在执行查询操作时不会访问ZooKeeper，所以不必过于担心ZooKeeper的承载能力。
+------------
+##### 7.4.1.1 ZooKeeper内的节点结构
+- ReplicatedMergeTree是依靠ZooKeeper的 *事件监听机制* 来实现各个副本之间的协同，所以，在表创建过程中它会以zk_path为根路径，创建这张表的一组监听节点：
+	1. 元数据
+		- /metadata ：保存元数据信息，包括主键、分区键、采样表达式等；
+		- /columns ：保存字段信息，包括列名称、数据类型；
+		- /replicas ：保存副本名称，对应设置参数replica_name;
+	2. 判断标识
+		- /leader_election：用于主副本选举；
+		- /blocks：记录Block的Hash信息摘要以及partition_id；（ *通过Hash摘要信息判断Block数据块是否重复；通过partition_id找到需要同步的数据分区;* ）
+		- /block_numbers：按照分区的写入顺序，以相同的顺序记录partition_id；各个副本在其本地MERGE时，都会依据相同的block_numbers进行；
+		- /quorum：（下限）当至少有quorum数量的副本写入成功后，整个写入过程才算成功；( *quorum由insert_quorum参数控制，默认为0；* )
+	3. 操作日志
+		- /log：常规操作日志节点(INSERT、MERGE、DROP PARTITION)，它是整个工作过程中最重要一环，保存了副本需要执行的指令；
+			- log使用了ZK的持久顺序型节点；每一个副本实例都会监听/log节点，当有新指令加入时，它们会把指令加入到副本各自的任务队列，并执行任务；
+		- /mutations：MUTATION操作日志节点，当执行ALERT、DELETE和ALERT UPDATE操作时，操作指令会被添加到这个节点；（也使用了ZK的持续顺序型节点）
+		- /replicas/{replica_name}/*：每个副本各自节点下的一组监听节点，用于指导副本在本地执行具体的任务指令，较为重点的节点如下：
+			- /queue：任务队列节点，用于执行具体的操作任务；当副本从/log或/mutations节点监听到操作指令时，会将执行任务添加到该节点下，并基于队列执行；
+			- /log_pointer：log日志指针节点，记录了最后一次执行的log日志下标信息；
+			- /mutation_pointer：mutations日志指针节点，记录了最后一次执行的mutations日志名称。
+##### 7.4.1.2 Entry日志对象的数据结构
+- 上述ReplicatedMergeTree在ZK中有两组非常重要的父节点：/log和/mutations；
+- 它们作用犹如一座通信塔，是分发操作指令的信息通道，而发送指令的方式，则是为这些父节点添加子节点，各个副本实例都能实时感知；
+--------
+- 上述子节点在CK中被统一抽象为Entry对象，而具体实现则由LogEntry和MutationEntry对象承载，分别对应/log和/mutations节点：
+	1. LogEntry：用于封装/log的子节点信息，核心属性：
+		- source replica：发送这条Log指令的副本来源，对应replica_name;
+		- type：操作指令类型，只要有get、merge和mutate三种，分别对应从远程副本下载分区、合并分区和MUTATION操作；
+		- block_id：当前分区的BlockID，对应/blocks路径下子节点的名称；
+		- partition_name：当前分区目录的名称；
+	2. MutationEntry：由于封装/mutations的子节点信息，核心属性：
+		- source replica：发送这条MUTATION指令的副本来源，对应replica_name;
+		- commands：操作指令，主要有ALTER DELETE和ALTER UPDATE；
+		- mutation_id：MUTATION操作的版本号；
+		- partition_id：当前分区的ID；
+------
+#### 7.4.2 副本协同的核心流程
+- 副本协同的核心流程主要有：INSERT(数据写入)、MERGE(分区合并)、MUTATION(数据修改)和ALTER(元数据修改)；
+- INSERT和ALTER操作是分布式执行的，借助ZK的时间通知机制，多副本之间会自动进行协同，但是它们不会使用ZK存储任何分区数据；
+- 其他操作并不支持分布式执行，包括SELECT、CREATE、DROP、RENAME和ATTACH；（例如为了创建多个副本，需要分别登录每个CK节点，并在它们本地各自执行CREATE操作）
+1. INSERT的核心执行流程
+ ![insert](./insert.jpg)
+
+按照示意图，大致可分为8个步骤：<br>
+	1. 创建第一个副本实例
+		首先在CH5节点上创建第一个副本实例：<br>
+		CREATE TABLE replicated_sales_1(<br>
+		&nbsp; &nbsp; id String,<br>
+		&nbsp; &nbsp; price Float64,<br>
+		&nbsp; &nbsp; create_time DateTime<br>
+		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch5.nauu.com')<br>
+		PRTITION BY toYYYYMM(create_time)<br>
+		ORDER BY id<br>
+		- 创建过程中，ReplicatedMergeTree会进行一些初始化操作：
+			- 根据zk_path初始化所有的ZK节点；
+			- 在/replicas/节点下注册自己的副本实例ch5.nauu.com;
+			- 启动监听任务，监听/log日志节点；
+			- 参与副本选举，选出主副本，选举方式是向/leader_election/插入子节点，第一个插入成功的副本就是主副本。
+	2. 创建第二个副本实例
+		在CH6节点下创建第二个副本实例：<br>
+		CREATE TABLE replicated_sales_1(<br>
+		ReplicatedMergeTree&nbsp; &nbsp; id String,<br>
+		&nbsp; &nbsp; price Float64,<br>
+		&nbsp; &nbsp; create_time DateTime<br>
+		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch6.nauu.com')<br>
+		PRTITION BY toYYYYMM(create_time)<br>
+		ORDER BY id<br>
+		- 创建过程中，第二个ReplicatedMergeTree会进行一些初始化操作：
+			- 在/replicas/节点下注册自己的副本实例ch6.nauu.com;
+			- 启动监听任务，监听/log日志节点；
+			- 参与副本选举，选出主副本。
+	3. 向第一个副本实例写入数据
+		执行命令：INSERT INTO TABLE replicated_sales_1 VALUES('A001', 100, `'2020-01-01 00:00:00'`)<br>
+		- 上述命令执行之后：
+			- 首先，会在本地完成分区目录的写入：Renaming temporary part tmp_insert_202001_1_1_0 to 202001_0_0_0
+			- 接着向/blocks节点写入该数据分区的block_id：Wrote block with ID '202001_295581757877228717_1212312312312432'
+				- 该block_id将作为后续重操作的判断依据，即副本会自动忽略该block_id的重复写入；
+			- 如果设置了insert_quorum参数(默认为0)，并且insert_quorum》=2，则CH5会进一步监控已完成写入操作的副本个数，只有当写入副本个数大于等于insert_quorum时，整个写入操作才算成功。
+	4. 由第一个副本实例推送Log日志
+		- 上述步骤完成后，会继续执行了INSERT的副本向/log节点推送操作日志：此处操作type会是get；
+		- 需要下载分区202001_0_0_0，其余所有副本都会基于Log日志以相同顺序执行命令;
+	5. 第二个副本实例拉取Log日志
+		- CH6副本会一直监听/log节点变化，CH6会触发日志拉取任务并更新log_pointer;
+		- CH6拉取到LogEntry之后，并不会直接执行，而是将其转为任务对象并放置任务队列；（ *此处拉取的是一个LogEntry区间，因为可能会连续收到多个LogEntry*）
+	6. 第二个副本实例向其他副本发起下载请求
+		- CH6是基于/queue队列开始执行任务的，当看到get类型的任务时，ReplicatedMergeTree会明白此时远端的其他副本中已经有成功写入的数据分区，而自己需要去同步这份数据；
+		- CH6会选择一个远端的副本作为数据下载来源，选择算法大致为：
+			- 从/replicas节点拿到所有的副本节点；
+			- 遍历这些副本，选取log_pointer下标最大、/queue子节点数最少的副本；（log_pointer 下标最大意味着该副本执行的日志最多；/queue子节点数最少意味着该副本目前任务执行负担最小。）
+			- 如果第一次请求失败，默认总请求次数为5(由max_fetch_partition_retries_count参数控制)。
+	7. 第一个副本实例响应数据下载请求
+		CH5的DataPartsExchange端口收到调用请求，根据参数做出响应。<br>
+	8. 第二副本实例下载数据并完成本地写入
+		- 收到CH5数据后，先写到临时目录，完成后再重命名该目录202001_0_0_0；
+		- ZK不负责表数据的传输，而是副本实例之间点对点地下载分区数据；
+2. Merge的核心执行流程
+
+![merge](./merge.jpg)
+
+Merge过程大致分为5个步骤：<br>
+1. 创建远程连接，尝试与主副本通信
+	- 首先在CH6执行OPTIMIZE命令强制触发MERGE合并；
+	- CH6通过/replicas找到CH5，并尝试建立远程连接。
+2. 主副本接受连接请求
+	- 主副本CH5收到CH6的连接请求；
+3. 由主副本指定MERGE计划并推送Log日志
+	- CH5的合并计划会转换为Log日志对象并推送Log日志，以通知所有副本开始合并；
+	- 同时，主副本还会锁住执行线程，对日志的接受情况进行监听；
+		- 其监听行为由replication_alter_partitions_sync参数控制，默认为1；参数为0时，不做任何等待；参数为1时，只等待主副本自身完成；参数为2时，会等待所有副本拉取完成。
+4. 各个副本分别拉取Log日志
+	- 各个副本监听并拉取Log日志，然后将日志对象转为任务对象并放置任务队列；
+5. 各个副本分别在本地执行MERGE
+	- 各个副本实例基于任务队列开始执行任务；
+----
+- ZK不会进行实质性的数据传输；
+- 无论MERGE操作在哪个副本被触发，都会先被转交至主副本，再由主副本完成 合并计划制定、消息日志的推送、日志接受情况的监控。
+----
+
+3. MUTATION的核心执行流程
+- 当ReplicatedMergeTree执行ALTER DELETE 或者 ALTER UPDATE 操作时，才会进入MOTATION部分的逻辑；
+- 5个步骤的流程如图：	
+	![mutation](./mutation.jpg)
+	
+	1. 推送MUTATION日志
+		ALTER TABLE replicated_sales_1 DELETE WHERE id='1'<br>
+		- 创建MUTATION ID：create mutation with ID 0000000000
+		- 将MUTATION操作转换为MutationEntry日志，并推送到/mutations/0000000000；（由此可知MUTATION日志是由/mutations节点分发给各个副本）
+	2. 所有副本实例各自监听MUTATION日志
+		- CH5、CH6都会实时监控/mutations节点；当监听到有新MUTATION日志加入时，它们首先会判断自己是否是主副本。
+	3. 由主副本实例响应MUTATION日志并推送Log日志
+		- 只有主副本才会响应MUTATION日志，CH5是主副本，它会将MUTATION日志转换为LogEntry日志并推送至/log节点，以通知各个副本执行具体的操作；
+	4. 各个副本实例分别拉取Log日志
+		- CH5、CH6分别监听Log日志推送，它们会分别拉取日志到本地，生成任务推送至/queue任务队列；
+	5. 各个副本实例分别在本地执行MUTATION
+------
+- MUTATION执行过程中，ZK同样不会进行任何实质性的数据传输；
+- MUTATION操作是经过/mutations节点实现分发的；
+- 无论MUTATION操作从哪个副本被触发，之后都会被转交至主副本，再由主副本负责推送Log日志，以通知各个副本执行最终的MUTATION逻辑；
+- 同时，也由主副本对日志接受情况实行监控。
+------
+
+4. ALTER的核心执行流程
+![alter](./alter.jpg)
+
+ALERT操作是进行元数据修改，核心流程如下：<br>
+	1. 修改共享元数据
+		- CH6执行增加字段：ALTER TABLE replicated_sales_1 ADD COLUMN id2 String
+		- 执行之后，CH6会修改ZK内的共享元数据节点；
+		- 数据修改之后，节点版本号也会同时提升；同时CH6还会负责监听所有副本的修改完成情况。
+	2. 监听共享元数据变更并各自执行本地修改
+		- CH5、CH6分别监听共享元数据的变更，之后会分别与本地元数据版本号做比较；
+		- 如果本地版本号低于共享版本号，则会在各自本地执行更新操作。
+	3. 确认所有副本完成修改
+		- 由CH6确认所有副本完成修改；
+------
+- ALTER操作过程中，CK也不会进行任何实质性的数据传输；
+- 本着谁执行谁负责的原则，在此CH6负责对共享元数据的修改以及对各个副本修改进度的监控。
+------
+
+### 7.5 数据分片
+- 引入数据副本，能够降低数据丢失风险，提升查询性能(分摊查询、读写分离)；要解决业务量庞大的情况，则需要引入分片(shard);
+- CK的数据分片需要结合Distributed表引擎一同使用，Distributed表引擎自身不存储任何数据，它能够作为分布式表的一层透明代理；
+#### 7.5.1 集群的配置方式
+- 1分片、1副本的配置：
+	```
+	<shar> <!-- 分片 -->
+		<replica> <!-- 副本 -->
+		</replica>
+		
+		<replica>
+		</replica>
+	```
+- shard 更像是逻辑层面的分组，而无论是副本还是分片，它们的载体都是replica，所以从某种角度讲，副本也是分片；
+
+------
+集群有两种配置形式：<br>
+1. 不包含副本的分片
+```
+<yandex>
+	<clickhouse_remote_servers>
+		<shard_2> <!-- 自定义集群名称 -->
+			<node>  <!-- 定义CK节点 -->
+				<host>ch5.nauu.com</host>
+				<port>9000</port>
+			</node>
+			<node>
+				<host>ch6.nauu.com</host>
+				<port>9000</port>
+			</node>
+		</shard_2>
+	</clickhouse_remote_servers>
+```
+- shard_2表示自定义集群名称，全剧唯一；
+
+2. 自定义分片和副本
+- 集群sharding_ha 拥有2个分片，每个分片有1个副本：
+```
+<sharding_ha>
+	<shard>
+		<replica>
+			<host>ch5.nauu.com</host>
+			<port>9000</port>
+		</replica>
+		<replica>
+			<host>ch6.nauu.com</host>
+			<port>9000</port>
+		</replica>
+	</shard>
+	<shard>
+		<replica>
+			<host>ch7.nauu.com</host>
+			<port>9000</port>
+		</replica>
+		<replica>
+			<host>ch8.nauu.com</host>
+			<port>9000</port>
+		</replica>
+	</shard>
+</sharding_ha>
+```
+- 集群中replica 数量的上限是由CK节点的数量决定的。
+
+#### 7.5.2 基于集群实现分布式DDL
+- 前面只有数据副本时，为了创建多张副本表，需要分别登录到每个CK节点，然后在本地各自执行CREATE语句；这是因为默认情况下，CREATE、DROP、RENAME和ALTER等DDL语句并不支持分布式执行；
+- 加入集群配置后，就可以使用新的语法实现分布式DDL执行了，语法形式如下：
+	- CREATE/DROP/RENAME/ALTER TABLE **ON CLUSTER cluster_name**
+	- *//cluster_name对应了配置文件中的集群名称，CK会根据配置信息分别去各个节点执行DDL语句*
+------
+- 分布式DDL语句：
+- 创建表：
+```
+	CREATE TABLE test_1_local ON CLUSTER shard_2(
+		id UInt64
+	)ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/test_1', '{replica}')
+	ORDER BY id
+	--这里可以使用其他表引擎
+```
+- **两个动态宏变量{shard}、{replica}是定义在各个节点配置文件中的。**
+
+- 删除表：
+```
+	DROP TABLE test_1_local ON CLUSTER shard_2
+```
 
