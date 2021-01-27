@@ -680,7 +680,7 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 - 副本协同的核心流程主要有：INSERT(数据写入)、MERGE(分区合并)、MUTATION(数据修改)和ALTER(元数据修改)；
 - INSERT和ALTER操作是分布式执行的，借助ZK的时间通知机制，多副本之间会自动进行协同，但是它们不会使用ZK存储任何分区数据；
 - 其他操作并不支持分布式执行，包括SELECT、CREATE、DROP、RENAME和ATTACH；（例如为了创建多个副本，需要分别登录每个CK节点，并在它们本地各自执行CREATE操作）
-1. INSERT的核心执行流程
+1. INSERT的核心执行流程<br>
  ![insert](./insert.jpg)
 
 按照示意图，大致可分为8个步骤：<br>
@@ -736,7 +736,7 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 		- 收到CH5数据后，先写到临时目录，完成后再重命名该目录202001_0_0_0；
 		- ZK不负责表数据的传输，而是副本实例之间点对点地下载分区数据；
 2. Merge的核心执行流程
-
+<br>
 ![merge](./merge.jpg)
 
 Merge过程大致分为5个步骤：<br>
@@ -760,7 +760,7 @@ Merge过程大致分为5个步骤：<br>
 
 3. MUTATION的核心执行流程
 - 当ReplicatedMergeTree执行ALTER DELETE 或者 ALTER UPDATE 操作时，才会进入MOTATION部分的逻辑；
-- 5个步骤的流程如图：	
+- 5个步骤的流程如图：<br>
 	![mutation](./mutation.jpg)
 	
 	1. 推送MUTATION日志
@@ -781,7 +781,7 @@ Merge过程大致分为5个步骤：<br>
 - 同时，也由主副本对日志接受情况实行监控。
 ------
 
-4. ALTER的核心执行流程
+4. ALTER的核心执行流程<br>
 ![alter](./alter.jpg)
 
 ALERT操作是进行元数据修改，核心流程如下：<br>
@@ -805,12 +805,13 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 #### 7.5.1 集群的配置方式
 - 1分片、1副本的配置：
 	```
-	<shar> <!-- 分片 -->
+	<shard> <!-- 分片 -->
 		<replica> <!-- 副本 -->
 		</replica>
 		
 		<replica>
 		</replica>
+	</shard>
 	```
 - shard 更像是逻辑层面的分组，而无论是副本还是分片，它们的载体都是replica，所以从某种角度讲，副本也是分片；
 
