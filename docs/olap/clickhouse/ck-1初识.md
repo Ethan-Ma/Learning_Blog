@@ -140,26 +140,28 @@ min_bytes_for_wide_part,min_rows_for_wide_part 在数据片段中可以使用Wid
 
 MergeTree表引擎中的数据会按照分区目录的形式保存到磁盘，完整存储结构如下：
 --------
-table_name<br>
-|<br>
-|-partition_1<br>
-| |-checksums.txt&nbsp; \ <br> 
-| |-columns.txt&nbsp; &nbsp; &nbsp; &nbsp; | <br> 
-| |-count.txt&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | <br> 
-| |-primary.idx&nbsp; &nbsp; &nbsp; &nbsp; |  <br>
-| |-[Column].bin&nbsp; &nbsp; |&nbsp; 基础文件<br>
-| |-[Column].mrk&nbsp; &nbsp; &nbsp; |  <br>
-| |-[Column].mrk2&nbsp; /  <br>
-| |  <br>
-| |-partition.dat&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; \ 使用分区键时才会生成 <br> 
-| |-minmax_[Column].idx&nbsp; &nbsp; /  <br>
-| |  <br>
-| |-skp_idx_[Column].idx&nbsp; &nbsp; &nbsp; \	使用二级索引时才会生成  <br>
-| |-skp_idx_[Column].mrk&nbsp; &nbsp; /  <br>
-|  <br>
-|-partition_2  <br>
-|  <br>
-|-partition_n  <br>
+```
+table_name
+|
+|-partition_1
+| |-checksums.txt  \
+| |-columns.txt     |
+| |-count.txt       |
+| |-primary.idx     |
+| |-[Column].bin    | 基础文件
+| |-[Column].mrk    |
+| |-[Column].mrk2  /
+| |
+| |-partition.dat          \ 使用分区键时才会生成
+| |-minmax_[Column].idx    /
+| |
+| |-skp_idx_[Column].idx    \ 使用二级索引时才会生成
+| |-skp_idx_[Column].mrk    /
+|
+|-partition_2
+|
+|-partition_n
+```
 --------
 上图可以看出，一张表的物理结构分为3层：数据表目录、分区目录 和 分区下具体的数据文件:
 1. partition：分区目；
@@ -568,15 +570,17 @@ ORDER BY id<br>
 
 -----
 - 实例：
-CREATE TABLE ver_collapse_table(<br>
- &nbsp; &nbsp; &nbsp; &nbsp; id String, <br> 
- &nbsp; &nbsp; &nbsp; &nbsp; code Int32, <br>
- &nbsp; &nbsp; &nbsp; &nbsp; create_time DateTime, <br>
- &nbsp; &nbsp; &nbsp; &nbsp; sign Int8, <br>
- &nbsp; &nbsp; &nbsp; &nbsp; ver UInt8<br>
-)ENGINE=VersionCollapsingMergeTree(sign, ver)<br>
-PARTITION BY toYYYYMM(create_time)<br>
-ORDER BY id<br>
+```
+CREATE TABLE ver_collapse_table(
+	id String, 
+	code Int32, 
+  create_time DateTime, 
+  sign Int8, 
+  ver UInt8
+)ENGINE=VersionCollapsingMergeTree(sign, ver)
+PARTITION BY toYYYYMM(create_time)
+ORDER BY id
+```
 -----
 - VersionCollapsingMergeTre是如何利用版本号字段的呢？
 	- 定义ver字段后，它会自动将ver字段作为排序条件，上述实例排序是：ORDER BY id, ver DESC 
