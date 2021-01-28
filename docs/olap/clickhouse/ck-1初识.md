@@ -530,8 +530,10 @@ GROUP BY id, city
 ```
 
 - 新增数据时，面向的对象是底表MergeTree：<br>
-INSERT INTO TABLE agg_table_basic<br>
-VALUES('A001', 'wuhan', 'code1', 100), ('A002', 'bejing', 'code2', 200)<br>
+```
+INSERT INTO TABLE agg_table_basic
+VALUES('A001', 'wuhan', 'code1', 100), ('A002', 'bejing', 'code2', 200)
+```
 //数据会自动同步到 *物化视图*, 并按照定义的规则处理数据:<br>
 - 查询：<br>
 	> SELECT id, *sumMerge*(value), *uniqMerge*(code), FROM agg_view GROUP BY id, city <br>
