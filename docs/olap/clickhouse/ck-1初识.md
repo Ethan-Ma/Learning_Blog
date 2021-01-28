@@ -140,9 +140,7 @@ min_bytes_for_wide_part,min_rows_for_wide_part 在数据片段中可以使用Wid
 
 
 ### 5.2 MergeTree的存储结构
-
-MergeTree表引擎中的数据会按照分区目录的形式保存到磁盘，完整存储结构如下：
---------
+MergeTree表引擎中的数据会按照分区目录的形式保存到磁盘，完整存储结构如下：<br>
 ```
 table_name
 |
