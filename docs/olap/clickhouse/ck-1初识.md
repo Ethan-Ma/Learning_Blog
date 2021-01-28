@@ -102,6 +102,7 @@ CK拥有完备的管理功能，称得上是一个DBMS，而不仅仅是一个�
 MergeTree作为合并树家族中最基础的表引擎，提供了主键索引、数据分区、数据副本和数据采样等基本能力；
 ### 5.1 MergeTree创建方式与存储结构
 MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片段不可修改，为了避免片段过多，CK后台会定期合并数据片段，属于相同分区的数据片段会被合并成一个新片段；
+
 #### 5.1.1 MergeTree创建方式
 表的创建方式大致相同，但需要ENGINE=MergeTree(), MergeTree 引擎没有参数;  
 -----
@@ -183,6 +184,7 @@ table_name
 ### 5.3 数据分区
 - 在MergeTree中数据是以分区目录的形式组织的，数据分区(partition)与数据分片(shard)是不同的概念，数据分区是针对本地数据而言的，是对数据的一种纵向的切分;
 - MT并不能依靠分区特性将一张表的数据分布存储到多个CK服务节点，而数据分片具有横向切分的能力；
+
 #### 5.3.1 数据分区规则
 | 类型     | 样例数据        | 分区表达式             | 分区ID                        |
 |----------|-----------------|------------------------|-------------------------------|
@@ -194,6 +196,7 @@ table_name
 > 如果分区键取值不是整型，也不是日期，例如String\Float等，则通过128位Hash算法取其Hash值作为分区ID。
 > 多个ID之间是通过-连字符链接的。
 -----
+
 #### 5.3.2 分区目录的命名规则
 PartitionID_MinBlockNum_MaxBlockNum_Level
 - PartitionID：就是分区ID；
@@ -216,20 +219,25 @@ PartitionID_MinBlockNum_MaxBlockNum_Level
 ### 5.4 一级索引
 - MergeTree定义主键PRIMARY KEY之后，会依据index_granularity间隔(默认8192行)，为数据表生成一级索引并保存至primary.idx文件；
 - 更为常见的简化形式是直接通过ORDER BY指代主键，此时PRIMARY KEY和ORDER BY定义相同，所以索引(primary.idx)和数据(.bin)会按照相同的规则排序。
+
 #### 5.4.1 稀疏索引
 - 一级索引primary.idx采用稀疏索引实现，稀疏索引是每一行索引标记对应一段数据；
 - 稀疏索引占用空间小，所以primary.idx内的索引数据常驻内存，取用速度极快。
+
 #### 5.4.2 索引粒度
 - 索引粒度：index_granularity参数定义；
 - MergeTree使用MarkRange表示一个具体的区间，通过start和end表示具体的范围。
 - index_granularity不单只作用于一级索引(.idx)，同时也会影响数据标记(.mrk)和数据文件(.bin)。
 - 因为仅有一级索引是完不成查询工作的，他需要借助数据标记才能定位数据，所以一级索引和数据标记的间隔粒度相同，彼此对齐；而数据文件也会按照index_granularity的间隔粒度进行数据压缩。
+
 #### 5.4.3 索引数据生成规则
 MergeTree对于稀疏索引数据的存储是很紧凑的，索引值前后相连，按照主键字段顺序紧密地排列在一起。  
+
 #### 5.4.4 索引的查询过程
 索引查询就是两个数值区间的交集判断：  
 - 一个区间是由基于主键的查询条件转换而来的条件区间；
 - 另一个区间是MarkRange的数值区间。
+
 ### 5.5 二级索引
 - MergeTree同样也支持二级索引，又称为跳数索引，它是由数据的聚合信息构建而成, 它能够为非主键字段的查询发挥作用；
 - 默认是关闭的，需要设置allow_experimental_data_skipping_indices(新版本中已经取消)才能使用；
@@ -669,7 +677,7 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 - ReplicatedMergeTree核心逻辑大量运用了ZooKeeper的能力，以实现多ReplicatedMergeTree副本实例之间的协同，包括主副本选举、副本状态感知、操作日志分发、任务队列和BlockID去重判断等；
 - 在执行 INSERT数据写入、MERGE分区合并 和 MUTATION修改操作的时候，都会涉及与ZooKeeper的通信，但通信过程不涉及表数据的传输；
 - 在执行查询操作时不会访问ZooKeeper，所以不必过于担心ZooKeeper的承载能力。
-------------
+
 ##### 7.4.1.1 ZooKeeper内的节点结构
 - ReplicatedMergeTree是依靠ZooKeeper的 *事件监听机制* 来实现各个副本之间的协同，所以，在表创建过程中它会以zk_path为根路径，创建这张表的一组监听节点：
 	1. 元数据
@@ -689,10 +697,10 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 			- /queue：任务队列节点，用于执行具体的操作任务；当副本从/log或/mutations节点监听到操作指令时，会将执行任务添加到该节点下，并基于队列执行；
 			- /log_pointer：log日志指针节点，记录了最后一次执行的log日志下标信息；
 			- /mutation_pointer：mutations日志指针节点，记录了最后一次执行的mutations日志名称。
+
 ##### 7.4.1.2 Entry日志对象的数据结构
 - 上述ReplicatedMergeTree在ZK中有两组非常重要的父节点：/log和/mutations；
 - 它们作用犹如一座通信塔，是分发操作指令的信息通道，而发送指令的方式，则是为这些父节点添加子节点，各个副本实例都能实时感知；
---------
 - 上述子节点在CK中被统一抽象为Entry对象，而具体实现则由LogEntry和MutationEntry对象承载，分别对应/log和/mutations节点：
 	1. LogEntry：用于封装/log的子节点信息，核心属性：
 		- source replica：发送这条Log指令的副本来源，对应replica_name;
@@ -704,11 +712,12 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 		- commands：操作指令，主要有ALTER DELETE和ALTER UPDATE；
 		- mutation_id：MUTATION操作的版本号；
 		- partition_id：当前分区的ID；
-------
+
 #### 7.4.2 副本协同的核心流程
 - 副本协同的核心流程主要有：INSERT(数据写入)、MERGE(分区合并)、MUTATION(数据修改)和ALTER(元数据修改)；
 - INSERT和ALTER操作是分布式执行的，借助ZK的时间通知机制，多副本之间会自动进行协同，但是它们不会使用ZK存储任何分区数据；
 - 其他操作并不支持分布式执行，包括SELECT、CREATE、DROP、RENAME和ATTACH；（例如为了创建多个副本，需要分别登录每个CK节点，并在它们本地各自执行CREATE操作）
+
 ##### 7.4.2.1 INSERT的核心执行流程<br>
  ![insert](./insert.jpg)
 
@@ -768,9 +777,9 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 8. 第二副本实例下载数据并完成本地写入
 	- 收到CH5数据后，先写到临时目录，完成后再重命名该目录202001_0_0_0；
 	- ZK不负责表数据的传输，而是副本实例之间点对点地下载分区数据；
+	
 ##### 7.4.2.2 Merge的核心执行流程
-<br>
-![merge](./merge.jpg)
+ ![merge](./merge.jpg)
 
 Merge过程大致分为5个步骤：<br>
 1. 创建远程连接，尝试与主副本通信
@@ -815,7 +824,7 @@ Merge过程大致分为5个步骤：<br>
 ------
 
 ##### 7.4.2.4 ALTER的核心执行流程<br>
-![alter](./alter.jpg)
+  ![alter](./alter.jpg)
 
 ALERT操作是进行元数据修改，核心流程如下：<br>
 1. 修改共享元数据
@@ -835,6 +844,7 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 ### 7.5 数据分片
 - 引入数据副本，能够降低数据丢失风险，提升查询性能(分摊查询、读写分离)；要解决业务量庞大的情况，则需要引入分片(shard);
 - CK的数据分片需要结合Distributed表引擎一同使用，Distributed表引擎自身不存储任何数据，它能够作为分布式表的一层透明代理；
+
 #### 7.5.1 集群的配置方式
 - 1分片、1副本的配置：
 	```
