@@ -358,7 +358,6 @@ MergeTree定位压缩数据块并读取数据：
 ##### 6.1.1.1 列级别TTL
 
 TTL到期之后，列值会被还原为对应数据类型的默认值。<br> 
--------
 ```
 CREATE TABLE ttl_table_v1(
         id String,
@@ -376,7 +375,6 @@ ORDER BY id
 
 ##### 6.1.1.2 表级别TTL
 TTL到期之后，会将过期的数据行整行删除。<br> 
--------
 ```
 CREATE TABLE ttl_table_v2(
         id String,
