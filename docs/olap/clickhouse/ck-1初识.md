@@ -705,28 +705,28 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 - 副本协同的核心流程主要有：INSERT(数据写入)、MERGE(分区合并)、MUTATION(数据修改)和ALTER(元数据修改)；
 - INSERT和ALTER操作是分布式执行的，借助ZK的时间通知机制，多副本之间会自动进行协同，但是它们不会使用ZK存储任何分区数据；
 - 其他操作并不支持分布式执行，包括SELECT、CREATE、DROP、RENAME和ATTACH；（例如为了创建多个副本，需要分别登录每个CK节点，并在它们本地各自执行CREATE操作）
-1. INSERT的核心执行流程<br>
+##### 7.4.2.1 INSERT的核心执行流程<br>
  ![insert](./insert.jpg)
 
 按照示意图，大致可分为8个步骤：<br>
-	1. 创建第一个副本实例
-		- 首先在CH5节点上创建第一个副本实例：<br>
-		```
-		CREATE TABLE replicated_sales_1(
-    	id String,
-    	price Float64,
-    	create_time DateTime
-		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch5.nauu.com')
-		PRTITION BY toYYYYMM(create_time)
-		ORDER BY id
-		```
-		- 创建过程中，ReplicatedMergeTree会进行一些初始化操作：
-			- 根据zk_path初始化所有的ZK节点；
-			- 在/replicas/节点下注册自己的副本实例ch5.nauu.com;
-			- 启动监听任务，监听/log日志节点；
-			- 参与副本选举，选出主副本，选举方式是向/leader_election/插入子节点，第一个插入成功的副本就是主副本。
-	2. 创建第二个副本实例
-		- 在CH6节点下创建第二个副本实例：<br>
+1. 创建第一个副本实例
+	- 首先在CH5节点上创建第一个副本实例：<br>
+	```
+	CREATE TABLE replicated_sales_1(
+    id String,
+    price Float64,
+    create_time DateTime
+	) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch5.nauu.com')
+	PRTITION BY toYYYYMM(create_time)
+	ORDER BY id
+	```
+	- 创建过程中，ReplicatedMergeTree会进行一些初始化操作：
+		- 根据zk_path初始化所有的ZK节点；
+		- 在/replicas/节点下注册自己的副本实例ch5.nauu.com;
+		- 启动监听任务，监听/log日志节点；
+		- 参与副本选举，选出主副本，选举方式是向/leader_election/插入子节点，第一个插入成功的副本就是主副本。
+2. 创建第二个副本实例
+	- 在CH6节点下创建第二个副本实例：<br>
 		```
 		CREATE TABLE replicated_sales_1(
 			id String,
@@ -736,35 +736,35 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 		PRTITION BY toYYYYMM(create_time)
 		ORDER BY id
 		```
-		- 创建过程中，第二个ReplicatedMergeTree会进行一些初始化操作：
-			- 在/replicas/节点下注册自己的副本实例ch6.nauu.com;
-			- 启动监听任务，监听/log日志节点；
-			- 参与副本选举，选出主副本。
-	3. 向第一个副本实例写入数据
+	- 创建过程中，第二个ReplicatedMergeTree会进行一些初始化操作：
+		- 在/replicas/节点下注册自己的副本实例ch6.nauu.com;
+		- 启动监听任务，监听/log日志节点；
+		- 参与副本选举，选出主副本。
+3. 向第一个副本实例写入数据
 		执行命令：INSERT INTO TABLE replicated_sales_1 VALUES('A001', 100, `'2020-01-01 00:00:00'`)<br>
-		- 上述命令执行之后：
-			- 首先，会在本地完成分区目录的写入：Renaming temporary part tmp_insert_202001_1_1_0 to 202001_0_0_0
-			- 接着向/blocks节点写入该数据分区的block_id：Wrote block with ID '202001_295581757877228717_1212312312312432'
-				- 该block_id将作为后续重操作的判断依据，即副本会自动忽略该block_id的重复写入；
-			- 如果设置了insert_quorum参数(默认为0)，并且insert_quorum》=2，则CH5会进一步监控已完成写入操作的副本个数，只有当写入副本个数大于等于insert_quorum时，整个写入操作才算成功。
-	4. 由第一个副本实例推送Log日志
-		- 上述步骤完成后，会继续执行了INSERT的副本向/log节点推送操作日志：此处操作type会是get；
-		- 需要下载分区202001_0_0_0，其余所有副本都会基于Log日志以相同顺序执行命令;
-	5. 第二个副本实例拉取Log日志
-		- CH6副本会一直监听/log节点变化，CH6会触发日志拉取任务并更新log_pointer;
-		- CH6拉取到LogEntry之后，并不会直接执行，而是将其转为任务对象并放置任务队列；（ *此处拉取的是一个LogEntry区间，因为可能会连续收到多个LogEntry*）
-	6. 第二个副本实例向其他副本发起下载请求
-		- CH6是基于/queue队列开始执行任务的，当看到get类型的任务时，ReplicatedMergeTree会明白此时远端的其他副本中已经有成功写入的数据分区，而自己需要去同步这份数据；
-		- CH6会选择一个远端的副本作为数据下载来源，选择算法大致为：
-			- 从/replicas节点拿到所有的副本节点；
-			- 遍历这些副本，选取log_pointer下标最大、/queue子节点数最少的副本；（log_pointer 下标最大意味着该副本执行的日志最多；/queue子节点数最少意味着该副本目前任务执行负担最小。）
-			- 如果第一次请求失败，默认总请求次数为5(由max_fetch_partition_retries_count参数控制)。
-	7. 第一个副本实例响应数据下载请求
-		CH5的DataPartsExchange端口收到调用请求，根据参数做出响应。<br>
-	8. 第二副本实例下载数据并完成本地写入
-		- 收到CH5数据后，先写到临时目录，完成后再重命名该目录202001_0_0_0；
-		- ZK不负责表数据的传输，而是副本实例之间点对点地下载分区数据；
-2. Merge的核心执行流程
+	- 上述命令执行之后：
+		- 首先，会在本地完成分区目录的写入：Renaming temporary part tmp_insert_202001_1_1_0 to 202001_0_0_0
+		- 接着向/blocks节点写入该数据分区的block_id：Wrote block with ID '202001_295581757877228717_1212312312312432'
+			- 该block_id将作为后续重操作的判断依据，即副本会自动忽略该block_id的重复写入；
+		- 如果设置了insert_quorum参数(默认为0)，并且insert_quorum》=2，则CH5会进一步监控已完成写入操作的副本个数，只有当写入副本个数大于等于insert_quorum时，整个写入操作才算成功。
+4. 由第一个副本实例推送Log日志
+	- 上述步骤完成后，会继续执行了INSERT的副本向/log节点推送操作日志：此处操作type会是get；
+	- 需要下载分区202001_0_0_0，其余所有副本都会基于Log日志以相同顺序执行命令;
+5. 第二个副本实例拉取Log日志
+	- CH6副本会一直监听/log节点变化，CH6会触发日志拉取任务并更新log_pointer;
+	- CH6拉取到LogEntry之后，并不会直接执行，而是将其转为任务对象并放置任务队列；（ *此处拉取的是一个LogEntry区间，因为可能会连续收到多个LogEntry*）
+6. 第二个副本实例向其他副本发起下载请求
+	- CH6是基于/queue队列开始执行任务的，当看到get类型的任务时，ReplicatedMergeTree会明白此时远端的其他副本中已经有成功写入的数据分区，而自己需要去同步这份数据；
+	- CH6会选择一个远端的副本作为数据下载来源，选择算法大致为：
+		- 从/replicas节点拿到所有的副本节点；
+		- 遍历这些副本，选取log_pointer下标最大、/queue子节点数最少的副本；（log_pointer 下标最大意味着该副本执行的日志最多；/queue子节点数最少意味着该副本目前任务执行负担最小。）
+		- 如果第一次请求失败，默认总请求次数为5(由max_fetch_partition_retries_count参数控制)。
+7. 第一个副本实例响应数据下载请求
+	- CH5的DataPartsExchange端口收到调用请求，根据参数做出响应。<br>
+8. 第二副本实例下载数据并完成本地写入
+	- 收到CH5数据后，先写到临时目录，完成后再重命名该目录202001_0_0_0；
+	- ZK不负责表数据的传输，而是副本实例之间点对点地下载分区数据；
+##### 7.4.2.2 Merge的核心执行流程
 <br>
 ![merge](./merge.jpg)
 
@@ -787,22 +787,22 @@ Merge过程大致分为5个步骤：<br>
 - 无论MERGE操作在哪个副本被触发，都会先被转交至主副本，再由主副本完成 合并计划制定、消息日志的推送、日志接受情况的监控。
 ----
 
-3. MUTATION的核心执行流程
+##### 7.4.2.3 MUTATION的核心执行流程
 - 当ReplicatedMergeTree执行ALTER DELETE 或者 ALTER UPDATE 操作时，才会进入MOTATION部分的逻辑；
 - 5个步骤的流程如图：<br>
 	![mutation](./mutation.jpg)
 	
-	1. 推送MUTATION日志
-		ALTER TABLE replicated_sales_1 DELETE WHERE id='1'<br>
-		- 创建MUTATION ID：create mutation with ID 0000000000
-		- 将MUTATION操作转换为MutationEntry日志，并推送到/mutations/0000000000；（由此可知MUTATION日志是由/mutations节点分发给各个副本）
-	2. 所有副本实例各自监听MUTATION日志
-		- CH5、CH6都会实时监控/mutations节点；当监听到有新MUTATION日志加入时，它们首先会判断自己是否是主副本。
-	3. 由主副本实例响应MUTATION日志并推送Log日志
-		- 只有主副本才会响应MUTATION日志，CH5是主副本，它会将MUTATION日志转换为LogEntry日志并推送至/log节点，以通知各个副本执行具体的操作；
-	4. 各个副本实例分别拉取Log日志
-		- CH5、CH6分别监听Log日志推送，它们会分别拉取日志到本地，生成任务推送至/queue任务队列；
-	5. 各个副本实例分别在本地执行MUTATION
+1. 推送MUTATION日志
+	- ALTER TABLE replicated_sales_1 DELETE WHERE id='1'<br>
+	- 创建MUTATION ID：create mutation with ID 0000000000
+	- 将MUTATION操作转换为MutationEntry日志，并推送到/mutations/0000000000；（由此可知MUTATION日志是由/mutations节点分发给各个副本）
+2. 所有副本实例各自监听MUTATION日志
+	- CH5、CH6都会实时监控/mutations节点；当监听到有新MUTATION日志加入时，它们首先会判断自己是否是主副本。
+3. 由主副本实例响应MUTATION日志并推送Log日志
+	- 只有主副本才会响应MUTATION日志，CH5是主副本，它会将MUTATION日志转换为LogEntry日志并推送至/log节点，以通知各个副本执行具体的操作；
+4. 各个副本实例分别拉取Log日志
+	- CH5、CH6分别监听Log日志推送，它们会分别拉取日志到本地，生成任务推送至/queue任务队列；
+5. 各个副本实例分别在本地执行MUTATION
 ------
 - MUTATION执行过程中，ZK同样不会进行任何实质性的数据传输；
 - MUTATION操作是经过/mutations节点实现分发的；
@@ -810,19 +810,19 @@ Merge过程大致分为5个步骤：<br>
 - 同时，也由主副本对日志接受情况实行监控。
 ------
 
-4. ALTER的核心执行流程<br>
+##### 7.4.2.4 ALTER的核心执行流程<br>
 ![alter](./alter.jpg)
 
 ALERT操作是进行元数据修改，核心流程如下：<br>
-	1. 修改共享元数据
-		- CH6执行增加字段：ALTER TABLE replicated_sales_1 ADD COLUMN id2 String
-		- 执行之后，CH6会修改ZK内的共享元数据节点；
-		- 数据修改之后，节点版本号也会同时提升；同时CH6还会负责监听所有副本的修改完成情况。
-	2. 监听共享元数据变更并各自执行本地修改
-		- CH5、CH6分别监听共享元数据的变更，之后会分别与本地元数据版本号做比较；
-		- 如果本地版本号低于共享版本号，则会在各自本地执行更新操作。
-	3. 确认所有副本完成修改
-		- 由CH6确认所有副本完成修改；
+1. 修改共享元数据
+	- CH6执行增加字段：ALTER TABLE replicated_sales_1 ADD COLUMN id2 String
+	- 执行之后，CH6会修改ZK内的共享元数据节点；
+	- 数据修改之后，节点版本号也会同时提升；同时CH6还会负责监听所有副本的修改完成情况。
+2. 监听共享元数据变更并各自执行本地修改
+	- CH5、CH6分别监听共享元数据的变更，之后会分别与本地元数据版本号做比较；
+	- 如果本地版本号低于共享版本号，则会在各自本地执行更新操作。
+3. 确认所有副本完成修改
+	- 由CH6确认所有副本完成修改；
 ------
 - ALTER操作过程中，CK也不会进行任何实质性的数据传输；
 - 本着谁执行谁负责的原则，在此CH6负责对共享元数据的修改以及对各个副本修改进度的监控。
