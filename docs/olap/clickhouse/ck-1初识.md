@@ -100,12 +100,12 @@ CK拥有完备的管理功能，称得上是一个DBMS，而不仅仅是一个�
 表引擎决定了一张数据表的最终“性格”，比如数据表拥有何种特性、数据以何种形式被存储以及如何被加载；
 在众多表引擎中，又属合并树(MergeTree)表引擎及其家族系列(*MergeTree)最为强大，在生产环境中大部分会用此系列的表引擎；
 MergeTree作为合并树家族中最基础的表引擎，提供了主键索引、数据分区、数据副本和数据采样等基本能力；
+
 ### 5.1 MergeTree创建方式与存储结构
-MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片段不可修改，为了避免片段过多，CK后台会定期合并数据片段，属于相同分区的数据片段会被合并成一个新片段；
+MergeTree在写入数据时，总会以数据片段写入磁盘，且数据片段不可修改，为了避免片段过多，CK后台会定期合并数据片段，属于相同分区的数据片段会被合并成一个新片段；<br>
 
 #### 5.1.1 MergeTree创建方式
-表的创建方式大致相同，但需要ENGINE=MergeTree(), MergeTree 引擎没有参数;  
------
+表的创建方式大致相同，但需要ENGINE=MergeTree(), MergeTree 引擎没有参数;<br>
 ```
 CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]
 (       name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1] [TTL expr1],
