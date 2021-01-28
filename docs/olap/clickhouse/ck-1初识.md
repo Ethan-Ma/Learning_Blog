@@ -710,28 +710,32 @@ ReplicatedMergeTree在上述基础上增加了ZooKeeper部分，它会进一步�
 
 按照示意图，大致可分为8个步骤：<br>
 	1. 创建第一个副本实例
-		首先在CH5节点上创建第一个副本实例：<br>
-		CREATE TABLE replicated_sales_1(<br>
-		&nbsp; &nbsp; id String,<br>
-		&nbsp; &nbsp; price Float64,<br>
-		&nbsp; &nbsp; create_time DateTime<br>
-		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch5.nauu.com')<br>
-		PRTITION BY toYYYYMM(create_time)<br>
-		ORDER BY id<br>
+		- 首先在CH5节点上创建第一个副本实例：<br>
+		```
+		CREATE TABLE replicated_sales_1(
+    	id String,
+    	price Float64,
+    	create_time DateTime
+		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch5.nauu.com')
+		PRTITION BY toYYYYMM(create_time)
+		ORDER BY id
+		```
 		- 创建过程中，ReplicatedMergeTree会进行一些初始化操作：
 			- 根据zk_path初始化所有的ZK节点；
 			- 在/replicas/节点下注册自己的副本实例ch5.nauu.com;
 			- 启动监听任务，监听/log日志节点；
 			- 参与副本选举，选出主副本，选举方式是向/leader_election/插入子节点，第一个插入成功的副本就是主副本。
 	2. 创建第二个副本实例
-		在CH6节点下创建第二个副本实例：<br>
-		CREATE TABLE replicated_sales_1(<br>
-		ReplicatedMergeTree&nbsp; &nbsp; id String,<br>
-		&nbsp; &nbsp; price Float64,<br>
-		&nbsp; &nbsp; create_time DateTime<br>
-		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch6.nauu.com')<br>
-		PRTITION BY toYYYYMM(create_time)<br>
-		ORDER BY id<br>
+		- 在CH6节点下创建第二个副本实例：<br>
+		```
+		CREATE TABLE replicated_sales_1(
+			id String,
+    	price Float64,
+    	create_time DateTime
+		) ENGINE=ReplicatedMergeTree('/clickhouse/tables/01/replicated_sales_1', 'ch6.nauu.com')
+		PRTITION BY toYYYYMM(create_time)
+		ORDER BY id
+		```
 		- 创建过程中，第二个ReplicatedMergeTree会进行一些初始化操作：
 			- 在/replicas/节点下注册自己的副本实例ch6.nauu.com;
 			- 启动监听任务，监听/log日志节点；
@@ -904,7 +908,6 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 	--这里可以使用其他表引擎
 ```
 - **两个动态宏变量{shard}、{replica}是定义在各个节点配置文件中的。**
-
 - 删除表：
 ```
 	DROP TABLE test_1_local ON CLUSTER shard_2
