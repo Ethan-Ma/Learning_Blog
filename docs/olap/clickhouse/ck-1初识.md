@@ -259,12 +259,12 @@ MergeTree从第0段分区开始，以此获取聚合信息；当获取到第3个
 CREATE TABLE skip_test(
 	ID string,
 	Url String,
-  Code String,
-  EventTiem Date,
-  INDEX a ID TYPE minmax GRANULARITY 5,
-  INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,
-  INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,
-  INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5
+	Code String,
+	EventTiem Date,
+	INDEX a ID TYPE minmax GRANULARITY 5,
+	INDEX b (length(ID) * 8) TYPE set(2) GRANULARITY 5,
+	INDEX c (ID, Code) TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 5,
+	INDEX d ID TYPE tokenbf_v1(256, 2, 0) GRANULARITY 5
 )ENGINE=MergeTree()
 ....
 ```
@@ -313,23 +313,22 @@ MergeTree将数据写入.bin文件的方式：
 #### 5.7.2 数据标记的工作方式
 MergeTree引擎在查找数据时，整个过包括两个步骤：*读取压缩数据块*和*读取数据*;<br> 
 ![mrk](./mrk.jpg)
-
 上图说明：  
 前提：  
-- JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
-- 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
-- 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
+1. JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
+2. 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
+3. 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
 
 MergeTree定位压缩数据块并读取数据：  
 1. 读取压缩数据块：  
-MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：  
-- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间；  
-	(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)  
-- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；  
+	- MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：  
+		- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间;<br> 
+			(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)  
+		- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；  
 2. 读取数据：  
-MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：  
-- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；  
-- 解压之后，依据解压数据块中的起始偏移量读取数据。  
+	- MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：  
+		- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；  
+		- 解压之后，依据解压数据块中的起始偏移量读取数据。  
 
 ### 5.8 对于分区、索引、标记和压缩数据的协同总结
 #### 5.8.1 写入过程
@@ -337,9 +336,9 @@ MergeTree并不需要整段解压 压缩数据块，可以根据需要，以inde
 2. 按照index_granularity索引粒度，会分别生成primary.idx一级索引(如果声明了二级索引，还会创建二级索引)、每一个列字段的.mrk数据标记和.bin压缩数据文件；
 
 #### 5.8.2 查询过程
-- 查询的本质可以看做一个不断缩小数据范围的过程；  
-- 理想情况下MergeTree首先依次借助分区索引、一级索引和二级索引，将数据扫描范围缩至最小，然后借助标记数据，将需要解压和计算的数据范围缩至最小；
-- 即使MergeTree不能预先减小数据范围，它会扫描所有的分区目录以及目录内索引短的最大区间，虽然不能减少数据范围，但是仍然能够借助数据标记，以多线程的形式同时读取多个压缩数据块，以提升性能。
+1. 查询的本质可以看做一个不断缩小数据范围的过程；  
+2. 理想情况下MergeTree首先依次借助分区索引、一级索引和二级索引，将数据扫描范围缩至最小，然后借助标记数据，将需要解压和计算的数据范围缩至最小；
+3. 即使MergeTree不能预先减小数据范围，它会扫描所有的分区目录以及目录内索引短的最大区间，虽然不能减少数据范围，但是仍然能够借助数据标记，以多线程的形式同时读取多个压缩数据块，以提升性能。
 
 ## 6. MergeTree系列表引擎 
 ### 6.1 MergeTree
@@ -487,25 +486,28 @@ PRIMARY KEY id
 
 - AggregateFunction 是CK提供的一种特殊的数据类型，它能够以二进制形式存储中间状态结果；写入数据时需要调用 *State函数，读取数据时需要调用相应的 *Merge函数：
 - **写入数据** <br>
-INSERT INTO TABLE agg_table<br>
-SELECT 'A00', 'wuhan', <br>
-uniqState('code1'), <br>
-sumState(toUInt32(100)),<br>
-'`2020-01-01 00:00:01`' <br>
+```
+INSERT INTO TABLE agg_table
+SELECT 'A00', 'wuhan',
+uniqState('code1'),
+sumState(toUInt32(100)),
+'2020-01-01 00:00:01'
+```
 
 - **查询数据** <br>
-SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table<br> 
-GROUP BY id, city <br>
-
+```
+SELECT id, city, uniqMerge(code), sumMerge(value)FROM agg_table
+GROUP BY id, city
+```
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
 - **底表** <br>
 //用于存储全量的明细数据，并以此对外提供实时查询。<br>
 ```
 CREATE TABLE agg_table_basic(
-        id String,
-        city String,
-        code String,
-        value UInt32
+	id String,
+	city String,
+	code String,
+	value UInt32
 )ENGINE=MergeTree()
 PARTITION BY city
 ORDER BY (id, city)
@@ -519,10 +521,10 @@ ENGINE=AggregatingMergeTree()
 PARTITION BY city
 ORDER BY (id, city)
 AS SELECT
-        id,
-        city,
-        uniqState(code) AS code,
-        sumState(value) AS value
+	id,
+	city,
+	uniqState(code) AS code,
+	sumState(value) AS value
 FROM agg_table_basic
 GROUP BY id, city
 ```
