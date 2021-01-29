@@ -936,7 +936,8 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 2. 分布式DDL核心执行流程
 - **创建分布式表**
 	![ddl_create](ddl_create.jpg)
-	大致分为3步:<br>
+	
+- 大致分为3步:<br>
 	1. 推送DDL日志：首先在CH5执行CREATE命令，本着谁执行谁负责的原则，CH5会负责创建DDLLogEntry日志并推送到ZK，同时也会监控任务的执行进度；
 	2. 拉取日志并执行：CH5、CH6实时监听/ddl/query-[seq]日志的推送，然后拉取到本地；
 		 首先，它们会判断host是否包含在DDLLogEntry的hosts列表中：<br>
@@ -951,6 +952,7 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 	- 分布式表：通常以_all后缀命名，只能使用Distributed表引擎；
 - Distributed表引擎采用 **读时检查机制**来检查本地表与分布式表之间的表结构一致性；所以只有在查询时才会进行检测，创建表时并不会检测；
 - 不同节点上的本地表之间使用不同表引擎是可行的，但是通常不建议这么做，保持它们的结构一致，有助于后期维护。
+	
 	![distributed](./distributed.jpg)
 	
 #### 7.6.1 分布式表定义
@@ -1001,7 +1003,8 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
  
 - 数据的具体划分规则：
 	1. 分片权重(weight)
-		集群配置中有weight权重选项，默认为1；分片权重会影响数据在分片中的倾斜程度，权重越大，被写入的数据越多；*(官方建议尽可能设置较小的值)*
+		集群配置中有weight权重选项，默认为1；分片权重会影响数据在分片中的倾斜程度，权重越大，被写入的数据越多；<br>
+		*(官方建议尽可能设置较小的值)*<br>
 		```
 		<sharding_simple>  <!-- 自定义集群名称 -->
 			<shard>
@@ -1075,7 +1078,9 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 			</replica>
 		</shard>
 		```
-		**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2**
+------
+	**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2**
+	
 	![replica_distributed](./replica_distributed.jpg)
 
 #### 7.6.5 分布式查询的核心流程
@@ -1085,19 +1090,19 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 	- 如果集群中的一个shard拥有多个replica，Distributed表引擎会使用 **负载均衡算法** 从众多replica中选一个，具体的负载均衡算法由load_balancing参数控制：
 		load_balancing = random/nearest_hostname/in_order/first_or_random
 	- 负载均衡算法有如下4种：
-		(1) random
-			默认负载均衡算法；<br>
-			前文所述，CK的服务节点有一个全局计数器errors_count，记录服务发生异常的次数；<br>
-			random算法会选择errors_count最少的replica；如果有多个replica的errors_count相同，则随机选一个replica。<br>
-		(2) nearest_hostname
-			首先选择errors_count最少的replica；<br>
-			errors_count相同时选择host名称与当前host最相似的节点上的replica。<br>
-		(3) in_order
-			首先选择errors_count最少的replica；<br>
-			errors_count相同时选择集群配置中replica的定义顺序逐个选择。<br>
-		(4) first_or_random
-			首先选择errors_count最少的replica；<br>
-			errors_count相同时选择集群配置中定义的第一个replica，如果该replica不可用，则进一步随机选一个replica。<br>
+		- (1) random
+			- 默认负载均衡算法；
+			- 前文所述，CK的服务节点有一个全局计数器errors_count，记录服务发生异常的次数;
+			- random算法会选择errors_count最少的replica；如果有多个replica的errors_count相同，则随机选一个replica。
+		- (2) nearest_hostname
+			- 首先选择errors_count最少的replica；
+			- errors_count相同时选择host名称与当前host最相似的节点上的replica。
+		- (3) in_order
+			- 首先选择errors_count最少的replica；
+			- errors_count相同时选择集群配置中replica的定义顺序逐个选择。
+		- (4) first_or_random
+			- 首先选择errors_count最少的replica；
+			- errors_count相同时选择集群配置中定义的第一个replica，如果该replica不可用，则进一步随机选一个replica。
 			
 2. 多分片查询的核心流程
 	- 先在各个分片本地查询，然后在发起查询节点合并结果。
@@ -1105,59 +1110,62 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 3. 使用Global优化分布式查询
 	- 如果在分布式查询中使用子查询，可能会面临两难局面：
 	- 假设分布式表test_query_all有两个分片：
-		```
-		CH5节点 test_query_local
+		- CH5节点 test_query_local
+	
     | id   | repo |
     | :--- | :--- |
     | 1    | 100  |
     | 2    | 100  |
     | 3    | 100  |
 		
-		CH6节点 test_query_local
-    | id   | repo |
-    | :--- | :--- |
-    | 3    | 200  |
-    | 4    | 200  |
-		```
+		- CH6节点 test_query_local
+		
+		| id   | repo |
+		| :--- | :--- |
+		| 3    | 200  |
+		| 4    | 200  |
+		
 	- id：用户编号；repo：仓库编号；要求查询同时拥有两个仓库的用户：
 		- 此时会面临两难选择：IN查询的子句应该是 本地表 还是 分布式表？（使用JOIN面临的情形与IN相同）
-			(1) 使用本地表的问题
+			- (1) 使用本地表的问题
 				```
 				SELECT uniq(id) FROM test_query_all WHERE repo=100
 				AND id IN (SELECT id FROM test_query_local WHERE repo=200)
 				```
-				结果是错误的，因为分布式表在收到查询之后，会将SQL替换成本地表的形式分发给每个分片执行：<br>
+				- 结果是错误的，因为分布式表在收到查询之后，会将SQL替换成本地表的形式分发给每个分片执行：<br>
 				```
 				SELECT uniq(id) FROM test_query_local WHERE repo=100
 				AND id IN (SELECT id FROM test_query_local WHERE repo=200)
 				```
-				由于单个分片上只存储部分数据，所以该SQL没有匹配到任何数据。<br>
+				- 由于单个分片上只存储部分数据，所以该SQL没有匹配到任何数据。<br>
+				
 				![query_in_local](./query_in_local.jpg)
 				
-			(2) 使用分布表问题
+			- (2) 使用分布表问题
 				```
 				SELECT uniq(id) FROM test_query_all WHERE repo=100
 				AND id IN (SELECT id FROM test_query_all WHERE repo=200)
 				```
-				查询结果是对的，但是通过观察查询日志发现，该查询的请求被放大了两倍。<br>
+				- 查询结果是对的，但是通过观察查询日志发现，该查询的请求被放大了两倍。<br>
+				
 				![query_in_all](./query_in_all.jpg)
 				
-				由于在IN查询子句中也使用了分布式表查询，所以在CH6节点收到这条SQL之后，它会再次向其他分片节点发起远程查询；<br>
-				在IN查询子句中使用分布式表查询时，查询请求会被放大N的平方倍，N等于集群分片节点数量，显然不能接受。<br>
+				- 由于在IN查询子句中也使用了分布式表查询，所以在CH6节点收到这条SQL之后，它会再次向其他分片节点发起远程查询；<br>
+				- 在IN查询子句中使用分布式表查询时，查询请求会被放大N的平方倍，N等于集群分片节点数量，显然不能接受。<br>
 			
-			(3) 使用Global优化查询
+			- (3) 使用Global优化查询
 				```
 				SELECT uniq(id) FROM test_query_all WHERE repo=100
 				AND id GLOBAL IN (SELECT id FROM test_query_all WHERE repo=200)
 				```
 				![query_global](./query_global.jpg)
 				
-				整个过程大致分为5步：
-				1) 将IN子句单独提出，发起一次分布式查询；<br>
-				2) 将分布式表转为本地表后，分别在本地和远端分片执行查询；<br>
-				3) 将IN子句查询结果进行汇总，并放入一张临时的内存表；<br>
-				4) 将内存表分发到远端分片节点；<br>
-				5)将分布式表转为本地表之后，开始执行SQL，IN子句直接使用临时的内存表。<br>
+				- 整个过程大致分为5步：
+					- 1) 将IN子句单独提出，发起一次分布式查询；<br>
+					- 2) 将分布式表转为本地表后，分别在本地和远端分片执行查询；<br>
+					- 3) 将IN子句查询结果进行汇总，并放入一张临时的内存表；<br>
+					- 4) 将内存表分发到远端分片节点；<br>
+					- 5)将分布式表转为本地表之后，开始执行SQL，IN子句直接使用临时的内存表。<br>
 				
-				*//使用GLOBAL修饰符之后，CK会将IN子句查询结果保存到内存临时表，并将其分发到各个远端节点，达到共享目的，避免了查询放大；*<br>
-				*//由于数据会在网络间分发，所以需要特别注意IN或JOIN子句查询结果不宜过大；如果结果有重复数据，也可以事先DISTINCT。*<br>
+			 *//使用GLOBAL修饰符之后，CK会将IN子句查询结果保存到内存临时表，并将其分发到各个远端节点，达到共享目的，避免了查询放大；*
+			 *//由于数据会在网络间分发，所以需要特别注意IN或JOIN子句查询结果不宜过大；如果结果有重复数据，也可以事先DISTINCT。*
