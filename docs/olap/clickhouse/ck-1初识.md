@@ -1150,6 +1150,8 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 				SELECT uniq(id) FROM test_query_all WHERE repo=100
 				AND id GLOBAL IN (SELECT id FROM test_query_all WHERE repo=200)
 				```
+				![query_global](./query_global.jpg)
+				
 				整个过程大致分为5步：
 				1) 将IN子句单独提出，发起一次分布式查询；<br>
 				2) 将分布式表转为本地表后，分别在本地和远端分片执行查询；<br>
