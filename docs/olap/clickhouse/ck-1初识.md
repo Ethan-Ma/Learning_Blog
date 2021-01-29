@@ -292,7 +292,7 @@ MergeTree将数据写入.bin文件的方式：
 - 头信息占9个字节，由1个UInt8(1字节)整型和2个UInt32(4字节)整型组成，分别代表：使用的压缩算法类型、压缩后数据大小 和 压缩前数据大小。<br>
 ![压缩数据块](./compressed_data.jpg)
 
-(CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息)  
+(*CK提供的clickhouse-compressor工具能够查询某个.bin文件中压缩数据的统计信息*)  
 - 每个压缩数据块的体积，按照其压缩之前的数据字节大小，都被严格控制在64KB-1MB之间，这个上下限分别由min_compress_size(默认65536)和max_compress_block_size(默认1048576)参数指定；
 - 如果一个间隔(index_granularity)内数据大小 小于 64KB，则继续获取下一批次数据，直到累积到 size>=64KB，生成一个压缩数据块；如果一个间隔内数据 64KB<= size <= 1MB, 则直接被压缩成一个数据块；如果size>1MB, 则首先按照1MB截断并生成一个压缩数据块，剩余数据继续依照上述规则执行。
 
@@ -905,21 +905,257 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 #### 7.5.2 基于集群实现分布式DDL
 - 前面只有数据副本时，为了创建多张副本表，需要分别登录到每个CK节点，然后在本地各自执行CREATE语句；这是因为默认情况下，CREATE、DROP、RENAME和ALTER等DDL语句并不支持分布式执行；
 - 加入集群配置后，就可以使用新的语法实现分布式DDL执行了，语法形式如下：
-	- CREATE/DROP/RENAME/ALTER TABLE **ON CLUSTER cluster_name**
+	- ```CREATE/DROP/RENAME/ALTER TABLE **ON CLUSTER cluster_name** ```
 	- *//cluster_name对应了配置文件中的集群名称，CK会根据配置信息分别去各个节点执行DDL语句*
 ------
-- 分布式DDL语句：
-- 创建表：
-```
+1. 分布式DDL语句：
+	- 创建表：
+	```
 	CREATE TABLE test_1_local ON CLUSTER shard_2(
 		id UInt64
 	)ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/test_1', '{replica}')
 	ORDER BY id
 	--这里可以使用其他表引擎
-```
-- **两个动态宏变量{shard}、{replica}是定义在各个节点配置文件中的。**
-- 删除表：
-```
+	```
+	- **两个动态宏变量{shard}、{replica}是定义在各个节点配置文件config.xml中的。**
+	- 删除表：
+	```
 	DROP TABLE test_1_local ON CLUSTER shard_2
-```
+	```
+2. 数据结构
+与ReplicatedMergeTree类似，分布式DDL语句在执行时也需要ZK的协同，以实现日志分发。<br>
+- ZK内的节点结构：
+	- 默认情况下，分布式DDL在ZK的根路径是：/clickhouse/task_queue/ddl (可以在config.xml设置)；
+	- 根目录下有一些监听节点，其中包括/query-[seq]，记录相应的操作指令；
+	- 监听节点/query-[seq]下包括两个状态节点记录任务状态：/query-[seq]/active 和 /query-[seq]/finished
+-	DDL LogEntry日志对象的数据结构
+	- 在/query-[seq]下记录的日志信息是由DDL LogEntry承载，他拥有下面几个核心属性：
+		- query：记录了DDL查询语句；
+		- hosts：记录了指定集群的hosts主机列表；
+		- initiator：记录初始化host主机的名称。
+2. 分布式DDL核心执行流程
+- **创建分布式表**
+	![ddl_create](ddl_create.jpg)
+	大致分为3步:<br>
+	1. 推送DDL日志：首先在CH5执行CREATE命令，本着谁执行谁负责的原则，CH5会负责创建DDLLogEntry日志并推送到ZK，同时也会监控任务的执行进度；
+	2. 拉取日志并执行：CH5、CH6实时监听/ddl/query-[seq]日志的推送，然后拉取到本地；
+		 首先，它们会判断host是否包含在DDLLogEntry的hosts列表中：<br>
+		 如果包含在内，则进入执行流程，执行完毕后将状态写入finihed 节点；如果不包含在内，则忽略这次日志的推送。<br>
+	3. 确认执行进度：在步骤1执行DDL语句之后，客户端会阻塞等待180秒，以期望所有host执行完毕；如果超出180秒，则会转入后台线程继续等待；
+		（等待时间由distributed_ddl_task_timeout参数指定，默认180秒）
 
+### 7.6 Distributed原理解析
+- Distributed表引擎是分布式表的代名词，它本身不存储数据，而是作为数据分片的透明代理，能够自动路由数据至集群中各个节点；
+- 从实体表层面来看，一张分片表由两部分组成：
+	- 本地表： 通常以_local后缀命名，本地表是承接数据的载体，可以使用非Distributed的任意表引擎，一张本地表对应一个分片；
+	- 分布式表：通常以_all后缀命名，只能使用Distributed表引擎；
+- Distributed表引擎采用 **读时检查机制**来检查本地表与分布式表之间的表结构一致性；所以只有在查询时才会进行检测，创建表时并不会检测；
+- 不同节点上的本地表之间使用不同表引擎是可行的，但是通常不建议这么做，保持它们的结构一致，有助于后期维护。
+	![distributed](./distributed.jpg)
+	
+#### 7.6.1 分布式表定义
+- DIstributed表引擎定义形式： ENGINE = Distributed(cluster, database, table [, sharding_key])
+	- cluster：集群名称，与集群配置中的自定义名称相对应；
+	- database和table：分布式表使用这组配置映射到本地表；
+	- sharding_key：分片键，选填；在数据写入时，分布式表会依据分片键的规则，将数据分布到各个host节点的本地表。
+- 先在每个分片节点上创建本地表：
+	```
+	CREATE TABLE test_shard_2_local ON CLUSTER sharding_simple(
+		id Int64
+	)ENGINE = MergeTree()
+	ORDER BY id
+	PARTITION BY id
+	```
+- 创建分布式表：
+	```
+	CREATE TABLE test_shard_2_all ON CLUSTER sharding_simple(
+		id Int64
+	)ENGINE = Distributed(sharding_simple, default, test_shard_2_local, rand())
+	```
+	*//此处的sharding_key是rand()随机函数，它的取值决定了数据会写入哪个分片*
+	
+	![create_distributed](./create_distributed.jpg)
+
+#### 7.6.2 查询分类
+- Distributed表的查询操作分为3类：
+	1. 只作用于 **分布式表** 的查询：CREATE、DROP、RENSME和ALTER，其中ALTER并不包括分区操作（ATTACH PARTITION、REPLACE PARTITION等）；
+		*//这些查询只会修改Distributed表自身，并不会修改local表；*
+		*//例如要彻底删除一张分布式表，则需要：*
+			*--删除分布式表：DROP TABLE test_shard_2_all ON CLUSTER sharding_simple*
+			*--删除本地表：  DROP TABLE test_shard_2_local ON CLUSTER sharding_simple*
+	2. 同时会作用于本地表的查询：对于INSERT 和 SELECT查询，Distributed表引擎会以分布式的方式同时作用于local本地表；
+	3. 不支持的查询：不支持任何MUTATION类型的操作，包括ALTER DELETE 和 ALTER UPDATE。
+
+#### 7.6.3 分片规则
+- 分片键要求返回一个 **整型** 类型的取值，包括 **Int和UInt**系列；
+- 例如：
+	```
+	--按照用户id的余数划分：
+		Distributed(cluster, database, table, userid)
+	--按照随机数划分：
+		Distributed(cluster, database, table, rand())
+	--按照用户id的Hash值划分：
+		Distributed(cluster, database, table, intHash(userid))
+	```
+ *//如果不声明分片键，则分布式表只会有一个分片；*
+ 
+- 数据的具体划分规则：
+	1. 分片权重(weight)
+		集群配置中有weight权重选项，默认为1；分片权重会影响数据在分片中的倾斜程度，权重越大，被写入的数据越多；*(官方建议尽可能设置较小的值)*
+		```
+		<sharding_simple>  <!-- 自定义集群名称 -->
+			<shard>
+				<weight>10</weight>
+				...
+			</shard>
+			<shard>
+				<weight>20</weight>
+				...
+			</shard>
+		</sharding_simple>
+		```
+	2. slot(槽)	
+		slot可以理解为水槽，数据顺着这些水槽流入分片，slot的数量等于所有分片权重之和；
+	3. 选择函数
+		用来判断数据写入哪个分片，步骤分为两步：
+		(1) 计算数据对应的slot值：slot = shard_value % sum_weight  *//shard_value是分片键的取值* 
+		(2) 基于slot找到对应的数据分片。
+		
+	![sharding](./sharding.jpg)
+
+#### 7.6.4 分布式写入的核心流程
+- 向集群分片写入数据，通常有两种思路：
+	- 第一种：借助外部计算系统将数据分片，然后再写入到集群的各个 **本地表**； *(//可以并行写入，写入性能更好，但是要依赖外部计算系统)*
+	- 第二种：通过Distributed表引擎代理写入分片数据，下面就介绍核心流程。
+
+##### 7.6.4.1 写入集群有2个分片，0个副本
+- 大致分为5个步骤：
+	1. 在第一个分片节点写入本地分片数据
+		- 首先在CH5对分布式表test_shard_2_all执行INSERT操作，之后分布式表主要做两件事：
+				(1) 按照分片规则划分数据；
+				(2) 将属于当前分片的数据写入本地表;
+				
+	2. 第一个分片节点建立远程连接，发送数据至远端节点
+		- 将属于远端分片的数据以分区为单位，分别写入临时bin文件，命名规则：
+			例如CH6的分片数据：/test_shard_2_all/default@ch6.nauu.com:9000/1.bin
+		- 建立连接
+	3. 第一个分片节点向远端分片节点发送数据
+		- 会有另一组 监听任务负责监听/test_shard_2_all目录下的变化，这个任务负责将数据压缩并发送至远端分片节点
+	4. 远端分片节点接受数据
+		- 与CH5节点建立连接；
+		- 接收CH5发送的数据，然后写入到本地表；
+	5. 由第一分片节点确认写入完毕
+		- 本着谁执行谁负责的原则，CH5负责切分数据，并发送至远端节点；
+		- 向远端节点发送数据有两种模式：
+			- 异步：在Distributed表写完本地分片之后，INSERT查询就会反悔成功写入；( *//insert_dietributed_sync=false*)
+			- 同步：在执行INSERT查询之后，会等待所有分片完成写入。 
+
+##### 7.6.4.2 写入有副本集群
+- 如果集群配置了副本，除了分片写入之外，还会触发副本数据的复制流程；
+- 副本复制有两种实现方式：
+	1. 通过Distributed表引擎复制
+		- 此种实现方式下，即使本地表不使用ReplicatedMergeTree表引擎，也能实现数据副本的功能；
+		- Distributed会同时负责分片和副本的数据写入，逻辑相同，流程见上述过程；
+		- 此种方案Distributed节点需要同时负责分片和副本的数据写入，它很有可能成为写入的单点瓶颈。(**不推荐**)
+	2. 通过ReplicatedMergeTree表引擎复制
+		- 如果配置了internaL_replication为true参数，Distributed表在该shard中只会选择一个 **合适的**replica，并写入数据；
+		- 此时如果本地表使用ReplicatedMergeTree表引擎，则多个replica副本之间的数据复制就会由ReplicatedMergeTree表引擎处理；
+		- shard种选择replica的算法：在CK服务节点中，有一个全局计数器errors_count，当服务异常时，该计数累加，CK会选择errors_count最小的replica；
+		```
+		<shard>
+			<!-- 由ReplicatedMergeTree复制表自己负责副本复制-->
+			<internal_replication>true</internal_replication>
+			<replica>
+				<host>ch5.nauu.com</host>
+				<port>9000</port>
+			</replica>
+			<replica>
+				<host>ch6.nauu.com</host>
+				<port>9000</port>
+			</replica>
+		</shard>
+		```
+		**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2**
+	![replica_distributed](./replica_distributed.jpg)
+
+#### 7.6.5 分布式查询的核心流程
+- 与数据写入不同，面向集群查询数据的时候，只能通过Distributed表引擎实现；
+- Distributed表接收到查询时，它会依次查询每个分片的数据，然后合并汇总返回；
+1. 多副本的路由规则
+	- 如果集群中的一个shard拥有多个replica，Distributed表引擎会使用 **负载均衡算法** 从众多replica中选一个，具体的负载均衡算法由load_balancing参数控制：
+		load_balancing = random/nearest_hostname/in_order/first_or_random
+	- 负载均衡算法有如下4种：
+		(1) random
+			默认负载均衡算法；<br>
+			前文所述，CK的服务节点有一个全局计数器errors_count，记录服务发生异常的次数；<br>
+			random算法会选择errors_count最少的replica；如果有多个replica的errors_count相同，则随机选一个replica。<br>
+		(2) nearest_hostname
+			首先选择errors_count最少的replica；<br>
+			errors_count相同时选择host名称与当前host最相似的节点上的replica。<br>
+		(3) in_order
+			首先选择errors_count最少的replica；<br>
+			errors_count相同时选择集群配置中replica的定义顺序逐个选择。<br>
+		(4) first_or_random
+			首先选择errors_count最少的replica；<br>
+			errors_count相同时选择集群配置中定义的第一个replica，如果该replica不可用，则进一步随机选一个replica。<br>
+			
+2. 多分片查询的核心流程
+	- 先在各个分片本地查询，然后在发起查询节点合并结果。
+
+3. 使用Global优化分布式查询
+	- 如果在分布式查询中使用子查询，可能会面临两难局面：
+	- 假设分布式表test_query_all有两个分片：
+		```
+		CH5节点 test_query_local
+    | id   | repo |
+    | :--- | :--- |
+    | 1    | 100  |
+    | 2    | 100  |
+    | 3    | 100  |
+		
+		CH6节点 test_query_local
+    | id   | repo |
+    | :--- | :--- |
+    | 3    | 200  |
+    | 4    | 200  |
+		```
+	- id：用户编号；repo：仓库编号；要求查询同时拥有两个仓库的用户：
+		- 此时会面临两难选择：IN查询的子句应该是 本地表 还是 分布式表？（使用JOIN面临的情形与IN相同）
+			(1) 使用本地表的问题
+				```
+				SELECT uniq(id) FROM test_query_all WHERE repo=100
+				AND id IN (SELECT id FROM test_query_local WHERE repo=200)
+				```
+				结果是错误的，因为分布式表在收到查询之后，会将SQL替换成本地表的形式分发给每个分片执行：<br>
+				```
+				SELECT uniq(id) FROM test_query_local WHERE repo=100
+				AND id IN (SELECT id FROM test_query_local WHERE repo=200)
+				```
+				由于单个分片上只存储部分数据，所以该SQL没有匹配到任何数据。<br>
+				![query_in_local](./query_in_local.jpg)
+				
+			(2) 使用分布表问题
+				```
+				SELECT uniq(id) FROM test_query_all WHERE repo=100
+				AND id IN (SELECT id FROM test_query_all WHERE repo=200)
+				```
+				查询结果是对的，但是通过观察查询日志发现，该查询的请求被放大了两倍。<br>
+				![query_in_all](./query_in_all.jpg)
+				
+				由于在IN查询子句中也使用了分布式表查询，所以在CH6节点收到这条SQL之后，它会再次向其他分片节点发起远程查询；<br>
+				在IN查询子句中使用分布式表查询时，查询请求会被放大N的平方倍，N等于集群分片节点数量，显然不能接受。<br>
+			
+			(3) 使用Global优化查询
+				```
+				SELECT uniq(id) FROM test_query_all WHERE repo=100
+				AND id GLOBAL IN (SELECT id FROM test_query_all WHERE repo=200)
+				```
+				整个过程大致分为5步：
+				1) 将IN子句单独提出，发起一次分布式查询；<br>
+				2) 将分布式表转为本地表后，分别在本地和远端分片执行查询；<br>
+				3) 将IN子句查询结果进行汇总，并放入一张临时的内存表；<br>
+				4) 将内存表分发到远端分片节点；<br>
+				5)将分布式表转为本地表之后，开始执行SQL，IN子句直接使用临时的内存表。<br>
+				
+				*//使用GLOBAL修饰符之后，CK会将IN子句查询结果保存到内存临时表，并将其分发到各个远端节点，达到共享目的，避免了查询放大；*<br>
+				*//由于数据会在网络间分发，所以需要特别注意IN或JOIN子句查询结果不宜过大；如果结果有重复数据，也可以事先DISTINCT。*<br>
