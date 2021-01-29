@@ -318,23 +318,24 @@ MergeTree将数据写入.bin文件的方式：
 
 #### 5.7.2 数据标记的工作方式
 MergeTree引擎在查找数据时，整个过包括两个步骤：*读取压缩数据块*和*读取数据*;<br> 
-![mrk](./mrk.jpg)
-上图说明：  
-前提：  
-1. JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
-2. 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
-3. 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
+ ![mrk](./mrk.jpg)
 
-MergeTree定位压缩数据块并读取数据：  
-1. 读取压缩数据块：  
-	- MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：  
-		- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间;<br> 
-			(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)  
-		- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；  
-2. 读取数据：  
-	- MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：  
-		- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；  
-		- 解压之后，依据解压数据块中的起始偏移量读取数据。  
+- 上图说明：  
+- 前提：  
+	1. JavaEnable字段数据类型为 UInt8,每行数值占用1字节，而数据表的index_granularity默认为8192；所以每一个索引片段的数据大小为8192B；
+	2. 按照压缩数据块生成规则，如果单批数据小于64KB，则继续获取下一批数据，直至累积到size>=64KB,才会生成下一个压缩数据块；因此对于JavaEnable字段，8个索引片段对应的数据 会被压缩到一个压缩数据块中(1B * 8192=8192B, 64KB=65536B, 65536/8192=8);
+	3. 也就是 每8行 标记数据 对应 一个 压缩数据块，所以这8行的 压缩文件的起始偏移量都是相同的，而它们在解压数据中的起始偏移量是按照8192B(每一个索引片段8192行数据)累加的。
+
+- MergeTree定位压缩数据块并读取数据：  
+	1. 读取压缩数据块：  
+		- MergeTree查询某列数据时，不会加载整个.bin文件，而是根据需要只加载特定的压缩数据块：  
+			- 标记数据中 上下相邻的两个压缩文件中的起始偏移量构成了压缩数据块的偏移区间;<br> 
+				(例如:前8个索引片段 都会对应到.bin压缩数据文件中的[0, 12016]压缩数据块；这个区间是加上了前后压缩块的头信息的，头信息固定由9个字节组成，压缩后占8B。)  
+			- 压缩数据块被加载到内存后进行解压，之后进入具体数据的读取；  
+	2. 读取数据：  
+		- MergeTree并不需要整段解压 压缩数据块，可以根据需要，以index_granularity的粒度加载特定的数据段：  
+			- 标记数据中 上下相邻的两个 解压数据的起始偏移量构成了 解压数据块的偏移区间；  
+			- 解压之后，依据解压数据块中的起始偏移量读取数据。  
 
 ### 5.8 对于分区、索引、标记和压缩数据的协同总结
 #### 5.8.1 写入过程
@@ -388,7 +389,7 @@ TTL create_time + INTERVAL 1 DAY
 ```
 -------
 - 修改表的TTL：  
-- ALERT TABLE ttl_table_v2 MODIFY TTL create_time + INTERVAL 3 DAY
+	`ALERT TABLE ttl_table_v2 MODIFY TTL create_time + INTERVAL 3 DAY`
 - 表级别TTL目前也没有取消方法。
 
 ##### 6.1.1.3 TTL运行机理  
@@ -398,10 +399,10 @@ TTL create_time + INTERVAL 1 DAY
 - 一个分区中某列数据过期，合并之后的新分区目录中将不会包含这个字段的数据文件(.bin和.mrk)
 - TTL默认的合并频率由MergeTree的merge_with_ttl_timeout参数控制，默认86400秒，即1天。它维护的是一个转悠的TTL任务队列，有别于MergeTree的常规合并任务，如果这个值被设置的过小，可能会带来性能的损耗；
 - 可以使用optimize命令强制触发合并：  
-	&nbsp; &nbsp; &nbsp; &nbsp; optimize TABLE table_name  //触发一个分区的合并<br> 
-	&nbsp; &nbsp; &nbsp; &nbsp; optimize TABLE table_name FINAL   //触发所有分区合并<br>
+	`optimize TABLE table_name`  *//触发一个分区的合并* <br> 
+	`optimize TABLE table_name FINAL`   *//触发所有分区合并* <br>
 - CK虽然没有提供删除TTL的方法，但是提供了控制全局TTL合并任务的启停方法：  
-	SYSTEM STOP/START TTL MERGES      //还是不能做到按每张数据表启停  
+	`SYSTEM STOP/START TTL MERGES`    *//还是不能做到按每张数据表启停*  
 
 #### 6.1.2 多路径存储策略
 目前有三种存储策略：  
@@ -413,7 +414,6 @@ TTL create_time + INTERVAL 1 DAY
 - MergeTree拥有主键，但是它的主键没有唯一键的约束，这就意味着即便多行数据的主键相同，他们还是能够被正常写入的；
 - ReplacingMergeTree则能够在合并分区的时候删除重复数据，确实也在‘一定程度’上解决了重复数据的问题。（以分区为单位删除重复数据）;
 - 创建：ENGINE=ReplacingMergeTree(ver)   //ver是选填，会指定一个UInt*、Date或者DateTime类型的字段作为版本号，这个参数决定了数据去重时所使用的算法。  
-----
 ```
 CREATE TABLE replace_table(
         id String,
@@ -424,7 +424,6 @@ PARTITION BY toYYYYMM(create_time)
 ORDER BY (id, code)
 PRIMARY KEY id
 ```
-----
 - ORDER BY 所声明的表达式是后续作为判断数据是否重复的依据；
 - 只有在合并分区的时候才会触发删除重复数据的逻辑；
 - 分区合并时，同一分区的重复数据才会被删除，不同分区的重复数据不会被删除；
@@ -458,8 +457,8 @@ PARTITION BY toYYYYMM(create_time)
 ORDER BY (id, city)
 PRIMARY KEY id
 ```
-//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段;<br> 
-//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总.<br>
+ *//ENGINE=SummingMergeTree((col1, col2, ...)) 	参数是选填的，用于设置除主键之外的其他**数值类型字段**，以指定被SUM汇总的列字段;* <br> 
+ *//如果不填参数，则会将所有 非主键**数值类型字段**进行SUM汇总.* <br>
 
 SummingMergeTree处理逻辑：<br>
 1. 用ORDER BY排序键作为聚合数据的条件KEY；
@@ -505,7 +504,7 @@ GROUP BY id, city
 ```
 - 上述正常情况下过于复杂，AggregatingMergeTree更为常见的应用方式是结合 *物化视图* 使用，即将它作为物化视图的表引擎：
 - **底表** <br>
-//用于存储全量的明细数据，并以此对外提供实时查询。<br>
+ *//用于存储全量的明细数据，并以此对外提供实时查询。* <br>
 ```
 CREATE TABLE agg_table_basic(
 	id String,
@@ -518,7 +517,7 @@ ORDER BY (id, city)
 ```
 
 - **物化视图**<br>
-// 用于特定场景的数据查询，相比MergeTree他拥有更高的性能。<br>
+ *// 用于特定场景的数据查询，相比MergeTree他拥有更高的性能。* <br>
 ```
 CREATE MATERIALIZED VIEW agg_view
 ENGINE=AggregatingMergeTree()
@@ -538,9 +537,9 @@ GROUP BY id, city
 INSERT INTO TABLE agg_table_basic
 VALUES('A001', 'wuhan', 'code1', 100), ('A002', 'bejing', 'code2', 200)
 ```
-//数据会自动同步到 *物化视图*, 并按照定义的规则处理数据:<br>
+ *//数据会自动同步到 *物化视图*, 并按照定义的规则处理数据:* <br>
 - 查询：<br>
-	> SELECT id, *sumMerge*(value), *uniqMerge*(code), FROM agg_view GROUP BY id, city <br>
+	> `SELECT id, *sumMerge*(value), *uniqMerge*(code), FROM agg_view GROUP BY id, city` <br>
 -----
 AggregatingMergeTree的处理逻辑：<br>
 1. 用ORDER BY 排序键作为聚合数据的条件KEY；
@@ -935,9 +934,10 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 		- initiator：记录初始化host主机的名称。
 2. 分布式DDL核心执行流程
 - **创建分布式表**
+	
 	![ddl_create](ddl_create.jpg)
 	
-- 大致分为3步:<br>
+- 大致分为3步:
 	1. 推送DDL日志：首先在CH5执行CREATE命令，本着谁执行谁负责的原则，CH5会负责创建DDLLogEntry日志并推送到ZK，同时也会监控任务的执行进度；
 	2. 拉取日志并执行：CH5、CH6实时监听/ddl/query-[seq]日志的推送，然后拉取到本地；
 		 首先，它们会判断host是否包含在DDLLogEntry的hosts列表中：<br>
@@ -981,10 +981,10 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 #### 7.6.2 查询分类
 - Distributed表的查询操作分为3类：
 	1. 只作用于 **分布式表** 的查询：CREATE、DROP、RENSME和ALTER，其中ALTER并不包括分区操作（ATTACH PARTITION、REPLACE PARTITION等）；
-		*//这些查询只会修改Distributed表自身，并不会修改local表；*
-		*//例如要彻底删除一张分布式表，则需要：*
-			*--删除分布式表：DROP TABLE test_shard_2_all ON CLUSTER sharding_simple*
-			*--删除本地表：  DROP TABLE test_shard_2_local ON CLUSTER sharding_simple*
+		*//这些查询只会修改Distributed表自身，并不会修改local表；* <br>
+		*//例如要彻底删除一张分布式表，则需要：* <br>
+	  *--删除分布式表：`DROP TABLE test_shard_2_all ON CLUSTER sharding_simple`* <br>
+	  *--删除本地表：  `DROP TABLE test_shard_2_local ON CLUSTER sharding_simple`* <br>
 	2. 同时会作用于本地表的查询：对于INSERT 和 SELECT查询，Distributed表引擎会以分布式的方式同时作用于local本地表；
 	3. 不支持的查询：不支持任何MUTATION类型的操作，包括ALTER DELETE 和 ALTER UPDATE。
 
@@ -1078,9 +1078,8 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 			</replica>
 		</shard>
 		```
+	**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2** <br>
 ------
-	**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2**
-	
 	![replica_distributed](./replica_distributed.jpg)
 
 #### 7.6.5 分布式查询的核心流程
@@ -1125,7 +1124,8 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 		| 3    | 200  |
 		| 4    | 200  |
 		
-	- id：用户编号；repo：仓库编号；要求查询同时拥有两个仓库的用户：
+	  *//id：用户编号；repo：仓库编号；*<br>
+		- 要求查询同时拥有两个仓库的用户：
 		- 此时会面临两难选择：IN查询的子句应该是 本地表 还是 分布式表？（使用JOIN面临的情形与IN相同）
 			- (1) 使用本地表的问题
 				```
@@ -1167,5 +1167,5 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 					- 4) 将内存表分发到远端分片节点；<br>
 					- 5)将分布式表转为本地表之后，开始执行SQL，IN子句直接使用临时的内存表。<br>
 				
-			 *//使用GLOBAL修饰符之后，CK会将IN子句查询结果保存到内存临时表，并将其分发到各个远端节点，达到共享目的，避免了查询放大；*
-			 *//由于数据会在网络间分发，所以需要特别注意IN或JOIN子句查询结果不宜过大；如果结果有重复数据，也可以事先DISTINCT。*
+			 *//使用GLOBAL修饰符之后，CK会将IN子句查询结果保存到内存临时表，并将其分发到各个远端节点，达到共享目的，避免了查询放大；* <br>
+			 *//由于数据会在网络间分发，所以需要特别注意IN或JOIN子句查询结果不宜过大；如果结果有重复数据，也可以事先DISTINCT。* <br>
