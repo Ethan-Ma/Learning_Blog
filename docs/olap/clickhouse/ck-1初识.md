@@ -1020,9 +1020,9 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 	2. slot(槽)	
 		slot可以理解为水槽，数据顺着这些水槽流入分片，slot的数量等于所有分片权重之和；
 	3. 选择函数
-		用来判断数据写入哪个分片，步骤分为两步：
-		(1) 计算数据对应的slot值：slot = shard_value % sum_weight  *//shard_value是分片键的取值* 
-		(2) 基于slot找到对应的数据分片。
+		用来判断数据写入哪个分片，步骤分为两步：<br>
+		(1) 计算数据对应的slot值：slot = shard_value % sum_weight  *//shard_value是分片键的取值* <br>
+		(2) 基于slot找到对应的数据分片。<br>
 		
 	![sharding](./sharding.jpg)
 
