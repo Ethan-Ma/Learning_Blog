@@ -52,8 +52,8 @@ CK的一个设计思路：Everything is table。<br>
 	)ENGINE = MySQL('host:port', 'database', 'table', 'user', 'password' [, replace_query, 'on_duplicate_clause'])
 	```
 	*//选填参数：*<br>
-		*//-- replcae_query：默认为0，对应MySQL的REPLACE INTO语法；如果设置为1，则会用REPLACE INTO代替INSERT INTO*<br>
-		*//-- on_duplicate_clause：默认为0，对应MySQL的ON DUPLICATE KEY语法，如果需要使用该设置，则必须将replcae_query设置为0*<br>
+	*//-- replcae_query：默认为0，对应MySQL的REPLACE INTO语法；如果设置为1，则会用REPLACE INTO代替INSERT INTO*<br>
+	*//-- on_duplicate_clause：默认为0，对应MySQL的ON DUPLICATE KEY语法，如果需要使用该设置，则必须将replcae_query设置为0*<br>
 		
 - 在具备INSERT写入能力之后，就可以尝试组合玩法，例如创建一张 **物化视图**：
 	```
