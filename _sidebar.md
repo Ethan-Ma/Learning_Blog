@@ -21,7 +21,8 @@
 
 * OLAP
 	* ClickHouse
-		* [CK原理解析与应用实践](./docs/olap/clickhouse/ck-1初识.md)
+		* [CK原理解析](./docs/olap/clickhouse/ck-1初识.md)
+		* [CK应用实践](./docs/olap/clickhouse/ck-2实践.md)
 
 * Others
 	* [LZ4](./docs/olap/clickhouse/LZ4.md)
