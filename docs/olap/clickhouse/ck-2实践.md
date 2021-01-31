@@ -68,6 +68,7 @@ CK的一个设计思路：Everything is table。<br>
 	
 ### Kafka
 - Kafka表引擎的正确使用方式：
+
 	 ![kafka_engine](kafka_engine.jpg)
 
 - 首先创建Kafka数据表A，它充当数据管道的角色，负责拉取Kafka中数据：
