@@ -264,4 +264,224 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 ```
  *//合并当前库中所有以 test_table_开头的表*<br>
  
+## 数据查询
+- 不恰当的SQL不仅会带来低性能，还可能导致不可预知的系统错误：
+- 例如： 避免使用SELECT *
 
+### WITH
+- CK支持CTE(Common Table Expression，公共表表达式)，CTE通过WITH子句表示，目前支持四种用法：
+	- 定义变量：`WITH 10 as start SELECT number FROM  system.numbers WHERE number>start`
+	- 调用函数：`WITH SUM(data_bytes) as bytes`
+	- 定义子查询：`WITH (SELECT ... FROM ...) AS res`
+	- 在子查询中重复使用WITH
+		```
+		SELECT id
+		FROM(
+			WITH (
+				SELECT SUM(disk_bytes) FROM table_1
+			) AS total_bytes
+			SELECT database, SUM(disk_bytes)/total_bytes FROM table_1
+		)
+		```
+### SAMPLE 
+- 实现数据采样的功能，是查询仅仅返回采样数据而不是全部数据；
+- SAMPLE子句的采样机制是一种幂等设计，即数据不发生变化情况下，总是能够返回相同数据；
+	```
+	CREATE TABLE hits_v1(
+		counterId UInt64,
+		eventDate DATE,
+		userId UInt64
+	)ENGINE = MergeTree()
+	PARTITION BY toYYYYMM(eventDate)
+	ORDER BY (counterId, intHash32(userId))
+	SAMPLE BY intHash32(userId)
+	```
+- Sample Key有两点需要注意：
+	1. SAMPLE BY所声明的表达式必须同时包含在主键的声明内；
+	2. Sample Key必须是Int类型，如若不是则会报错。
+- SAMPLE子句支持3种用法：
+	1. SAMPLE factor
+		- factor表示采样因子，取值0～1。
+		- 统计查询时，为了得到最终的近似结果，就需要将得到的结果乘以采样系数：
+			*//可以借助 虚拟字段 _simple_factor来获取采样系数。*<br>
+			```
+			SELECT count() * any(_sample_factor) FROM hits_v1 SAMPLE 0.1
+			```
+	2. SAMPLE rows
+		- 表示按样本数量采样，rows表示至少采样多少行数据， 但是必须是大于1的整数；
+			`SELECT count() FROM hits_v1 SAMPLE 1000`<br> 
+			*//数据采样的范围是一个近似范围，由于采样数据的最小粒度是由index_granularity索引粒度决定的；*<br>
+			*//由此可知，设置一个小于 索引粒度 或者 较小的rows值没有什么意义，应该设置一个较大值。*<br>
+	3. SAMPLE factor OFFSET n
+		- 表示按照 因子系数factor 和 偏移量n 采样；
+		- n表示偏移多少数据才开始采样，它们都是0～1之间的小数；
+			```
+			SELECT counterId FROM hits_v1 SAMPLE 0.4 OFFSET 0.5
+			```
+### ARRAY JOIN
+- ARRAY JOIN 子句允许在数据表的内部与数组或嵌套类型字段进行JOIN操作，从而将一行数组展开为多行；
+- 先新建一个包含Array字段的测试表并插入数据：
+	```
+	CREATE TABLE query_v1(
+		title String,
+		value Array(UInt8)
+	)ENGINE = Log
+	```
+	```
+	INSERT INTO query_v1
+	VALUES ('food', [1, 2, 3]),
+	('fruit', [3, 4]),
+	('meat', [])
+	```
+	
+- 在一条SELECT语句中只能存在一个ARRAY JOIN (使用子查询除外)；目前支持INNER和LEFT两种JOIN策略：
+	1. INNER ARRAY JOIN
+		- ARRAY JOIN默认使用INNER JOIN策略：
+			`SELECT title, value FROM query_v1 ARRAY JOIN value`
+		- 查询结果基于value数组被展开成多行，并且排除掉了空数组;
+| title | value |
+| :---  | :---  |
+| food  | 1     |
+| food  | 2     |
+| food  | 3     |
+| fruit | 3     |
+| fruit | 4     |
+			
+	2. LEFT ARRAY JOIN
+		- 在INNER JOIN中被排除的空数组出现在结果集中。
+			`SELECT title, value, v FROM query_v1 LEFT ARRAY JOIN value AS v`
+| title | value     | v    |
+| :---  | :---      | :--- |
+| food  | [1, 2, 3] | 1    |
+| food  | [1, 2, 3] | 2    |
+| food  | [1, 2, 3] | 3    |
+| fruit  | [3, 4] | 3    |
+| fruit  | [3, 4] | 4    |
+| meat   | []     | 0    |
+		
+- 当同时对多个数组字段进行ARRAY JOIN操作时，查询的计算逻辑是按行合并而不是产生笛卡尔积：
+	```
+	SELECT title, value, v, arrayMap(x->x*2, value) as mapv, v_1
+	FROM query_v1 
+	LEFT ARRAY JOIN value AS v, mapv AS v_1
+	```
+| title | value     | v    | mapv      | v_1  |
+| :---  | :---      | :--- | :---      | :--- |
+| food  | [1, 2, 3] | 1    | [2, 4, 6] | 2    |
+| food  | [1, 2, 3] | 2    | [2, 4, 6] | 4    |
+| food  | [1, 2, 3] | 3    | [2, 4, 6] | 6    |
+| fruit  | [3, 4] | 3    | [6, 8] | 6    |
+| fruit  | [3, 4] | 4    | [6, 8] | 8    |
+| meat   | []     | 0    | []     | 0    |
+
+- 包含嵌套类型的测试表：
+	```
+	CREATE TABLE query_v2(
+		title String,
+		nest Nested(
+			v1 UInt32,
+			v2 UInt64
+		)
+	)ENGINE = Log
+	```
+	*//在写入嵌套数据类型时，同一行数据中各个数组的长度需要对齐，而对多行数据之间的数组长度没有限制*<br>
+	
+	```
+	INSERT INTO query_v2 
+	VALUES('food', [1, 2, 3], [10, 20, 30]),
+	('fruit', [3, 4], [30, 40]),
+	('meat', [], [])
+	```
+
+### JOIN
+- 它的语法包含连接精度和连接类型来两部分，目前CK支持的JOIN子句形式如图：
+ ![join](join.jpg)
+
+#### 连接精度
+- 默认为ALL，可以通过join_default_strictness配置参数修改默认的连接精度类型；
+- 连接匹配的判断是通过JOIN KEY，目前只支持等式(EQUAL JOIN);
+- 交叉连接(CROSS JOIN)不需要使用JOIN KEY，因为它会产生笛卡尔积。
+
+##### ALL
+- 如果左表内的一行数据，在右表中有多行数据与之连接匹配，则返回右表中全部连接的数据。
+
+##### ANY
+- 如果左表内的一行数据，在右表中有多行数据与之连接匹配，则仅仅返回右表中第一行连接的数据。
+
+##### ASOF
+- 是一种模糊连接，它允许在连接键之后追加定义一个模糊连接的匹配条件asof_column:
+	```
+	SELECT a.id, a.name, b.tate, a.time, b.time
+	FROM join_tb1 AS a 
+	ASOF INNER JOIN join_tb2 AS b
+	ON a.id=b.id 
+	AND a.time=b.time
+	```
+	*//其中a.id=b.id是寻常的连接键，而紧跟其后的a.time=b.time 则是asof_column模糊连接条件；*<br>
+	*//这条语句的语义等同于：`a.id=b.id AND a.time>=b.time`，且仅返回了右表中第一行连接匹配的数据。*<br>
+	
+- ASOF支持使用USING的间写形式，USING后声明的最后一个字段会被自动转换为asof_column模糊连接条件：
+	```
+	SELECT a.id, a.name, b.tate, a.time, b.time
+	FROM join_tb1 AS a 
+	ASOF INNER JOIN join_tb2 AS b
+	USING(id, time)
+	```
+- asof_column字段的使用有两点注意：
+	1. asof_column必须是整型、浮点型和日期型这类有序序列的数据类型；
+	2. asof_column不能是数据表内的唯一字段，换言之，连接键(JOIN KEY)和asof_column不能是同一个字段。
+
+#### 连接类型
+- 连接类型所形成结果是交集、并集、笛卡尔积或是其他形式；
+
+##### INNER
+- INNER JOIN表示内连接，以左表为基础，从右表找出与左表连接的行；
+- 只会返回左表和右表中交集的部分。
+
+##### OUTER
+- OUTER JOIN表示外连接，可以进一步细分为左外连接(LEFT)、右外连接(RIGHT)和全外连接(FULL);
+- LEFT OUTER JOIN：
+	- 以左表为基础，从右表中找出与左表连接的行以补充属性；
+	- 如果在右表中没有找到连接的行，则采用响应字段数据类型的默认值；
+	- 换言之，对于左连接查询，左表的数据总是能够全部返回。
+- RIGHT OUTER JOIN：
+	- 右表的数据总是能够全部返回，而左表不能连接的数据则使用默认值补全；
+- FULL JOIN：
+	- 全外连接查询会返回左表和右表的并集；
+
+##### CROSS
+- CROSS JOIN 表示交叉连接，会返回左表与右表的笛卡尔积；
+- CROSS JOIN不需要声明JOIN KEY，因为结果会包含他们的所有组合；
+- 交叉连接查询时，会以左表为基础，逐行与右表全集相乘。
+
+#### 多表连接
+- 多表连接查询时，CK会将它们转为两两连接的形式；
+
+#### 注意事项
+- 为了能优化JOIN查询性能，首先应该遵循左大右下的原则；
+- 无论使用哪种连接方式，右表都会被全部加载到内存中与左表进行比较；
+- 其次，JOIN查询目前没有缓存的支持，即使连续执行相同SQL，也都会执行一次全新计划；
+- 最后，如果是在大量维度属性补全的查询场景中，则建议使用字典代替JOIN查询。
+- 空值策略：通过参数join_use_nulls参数指定，默认为0，使用数据类型的默认值填充；当参数为1时，空值由NULL填充。
+
+### GROUP BY
+- 除了普通GROUP BY聚合查询，目前还能配合WITH ROLLUP、WITH CUBE 和 WITH TOTAL三种修饰符获取额外汇总信息。
+- WITH ROLLUP
+	- 它能够按照聚合键从右向左上卷数据，生成分组小计和总计。
+		```
+		SELECT table, name SUM(byte_on_disk) FROM system.parts
+		GROUP BY table, name
+		WITH ROLLUP
+		ORDER BY table
+		```
+		*//返回结果中附加返回了小计汇总行，包括所有表分区磁盘大小的汇总合计以及每张table内所有分区大小的合计信息。*<br>
+- WITH CUBE
+	- CUBE像立方体模型一样，基于聚合键之间所有的组合生成小计信息；
+	- 如果聚合键有n个，则最终小计组合的个数为2的n次方；
+- WITH TOTAL
+	- 会基于聚合函数对所有数据进行统计，结果附加了一行total汇总合计。
+
+### LIMIT 
+- LIMIT n
+- LIMIT n BY express
+- LIMIT n OFFSET y BY express
