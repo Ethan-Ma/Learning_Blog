@@ -263,3 +263,5 @@ CREATE TABLE test_table_all AS test_table_merge
 ENGINE = Merge(currentDatabases(), '^test_table_')
 ```
  *//合并当前库中所有以 test_table_开头的表*<br>
+ 
+
