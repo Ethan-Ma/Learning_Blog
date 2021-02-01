@@ -1079,7 +1079,6 @@ ALERT操作是进行元数据修改，核心流程如下：<br>
 		</shard>
 		```
 	**ReplicatedMergeTree表引擎如何复制分发数据，参见7.4.2** <br>
-------
 
 	![replica_distributed](./replica_distributed.jpg)
 
