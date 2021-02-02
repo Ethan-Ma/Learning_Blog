@@ -9,7 +9,7 @@ CK的一个设计思路：Everything is table。<br>
 - 有两种使用形式：
 	1. 既读又写
 		- 创建表：
-			```
+			```sql
 			CREATE TABLE hdfs_table1(
 				id UInt32,
 				code String,
@@ -19,7 +19,7 @@ CK的一个设计思路：Everything is table。<br>
 			*//CK支持的文件格式，常见有CSV、TSV和JSON等*<br>
 		
 		- 插入数据：
-			```
+			```sql
 			INSERT INTO hdfs_table1
 			SELECT number, concat('code', toString(number)), concat('n', toString(number))
 			FROM numbers(5)
@@ -45,7 +45,7 @@ CK的一个设计思路：Everything is table。<br>
 
 ### MySQL
 - 与MySQL中的数据表建立映射，可以远程发起查询：SELECT、INSERT。
-	```
+	```sql
 	CREATE TABLE dolphin_scheduler_table(
 		id UInt32,
 		name String
@@ -56,7 +56,7 @@ CK的一个设计思路：Everything is table。<br>
 	*//-- on_duplicate_clause：默认为0，对应MySQL的ON DUPLICATE KEY语法，如果需要使用该设置，则必须将replcae_query设置为0*<br>
 		
 - 在具备INSERT写入能力之后，就可以尝试组合玩法，例如创建一张 **物化视图**：
-	```
+	```sql
 	 CREATE MATERIALIZED VIEW view_mysql1
 	 ENGINE = MergeTree()
 	 ORDER BY id
@@ -72,7 +72,7 @@ CK的一个设计思路：Everything is table。<br>
 	 ![kafka_engine](kafka_engine.jpg)
 
 - 首先创建Kafka数据表A，它充当数据管道的角色，负责拉取Kafka中数据：
-	```
+	```sql
 	CREATE TABLE kafka_queue(
 		id UInt32,
 		code String,
@@ -88,7 +88,7 @@ CK的一个设计思路：Everything is table。<br>
 	*//topic、broker list用逗号分隔*<br>
 	
 - 创建一张任意引擎的数据表B，充当面向终端用户查询表的角色，在生产环境中通常使用MergeTree系列：
-	```
+	```sql
 	CREATE TABLE kafka_table(
 		id UInt32,
 		code String,
@@ -97,20 +97,20 @@ CK的一个设计思路：Everything is table。<br>
 	ORDER BY id
 	```
 - 最后，创建一张物化视图C，负责将A的数据实时同步到B：
-	```
+	```sql
 	CREATE MATERIALIZED VIEW consumer TO kafka_table
 	AS SELECT id, code, name FROM kafka_queue
 	```
 - 如果要停止同步数据，则可以删除视图，或者将其卸载：
-	```
+	```sql
 	DROP TABLE comnsumer
 	```
 	或者<br>
-	```
+	```sql
 	DETACH TABLE consumer
 	```
 - 卸载视图之后，再次恢复，则可以使用装载命令：
-	```
+	```sql
 	ATTACH MATERIALIZED VIEW consumer TO kafka_table(
 		id UInt32,
 		code String,
@@ -134,7 +134,7 @@ CK的一个设计思路：Everything is table。<br>
 - 数据表被创建时，磁盘上不会创建任何数据文件；
 - 广泛应用在CK内部作为集群间分发数据的存储载体来使用；
 	- 例如：在分布式IN查询中，会利用Memory临时表保存IN子句的查询结果；
-```
+```sql
 CREATE TABLE memory_1(
 	id UInt32
 )ENGINE = MEmory()
@@ -145,17 +145,17 @@ CREATE TABLE memory_1(
 - 它具有去重能力，所有元素都是唯一的，数据重复写入会被忽略；
 - 支持正常的INSERT写入，但是不支持直接SELECT查询； **只能间接作为IN查询的右侧条件被查询使用**；
  **创建表**<br>
-```
+```sql
 CREATE TABLE set_1(
 	id UInt8
 )ENGINE = Set()
 ```
  **插入数据**<br>
-```
+```sql
 INSERT INTO TABLE set_1 SELECT number FROM number(10)
 ```
  **查询数据**<br>
-```
+```sql
 SLECT arrayJoin([1, 2, 3]) AS a WHERE a IN set_1
 ```
 ### Join
@@ -167,28 +167,28 @@ SLECT arrayJoin([1, 2, 3]) AS a WHERE a IN set_1
 	- join_type：连接类型，支持交集、并集、笛卡尔积或其他形式(INNER、OUTER、CROSS)； *（//当join_strictness为ANY时，join_key重复的数据会被忽略）*
 	- join_key：连接键；
 - 创建主表并写入数据：
-	```
+	```sql
 	CREATE TABLE main_tb1(
 		id UInt8,
 		name String,
 		time DateTime
 	)ENGINE = Log
 	```
-	```
+	```sql
 	INSERT INTO TABLE main_tb1
 	VALUES(1, 'Clickhouse', '`2020-01-01 00:00:00`'),
 	(2, 'Spark', '`2020-01-02 00:00:00`'),
 	(3, 'ElasticSearch', '`2020-01-03 00:00:00`')
 	```
 - 创建Join表并写入数据：
-	```
+	```sql
 	CREATE TABLE id_join_tb1(
 		id UInt8,
 		price UInt32,
 		time DateTime
 	)ENGINE = Join(ANY, LEFT, id) 
 	```
-	```
+	```sql
 	INSERT INTO TABLE id_join_tb1 
 	VALUES(1, 100, '`2020-01-01 00:00:00`'),
 	(2, 150, '`2020-01-02 00:00:00`'),
@@ -197,7 +197,7 @@ SLECT arrayJoin([1, 2, 3]) AS a WHERE a IN set_1
 	```
 - 直接查询Join表: `SELECT * FROM id_join_tb1`
 - 主战场：
-	```
+	```sql
 	SELECT id, name, price
 	FROM main_tb1
 	LEFT JOIN id_join_tb1
@@ -222,11 +222,11 @@ SLECT arrayJoin([1, 2, 3]) AS a WHERE a IN set_1
  ![buffer](./buffer.jpg)
  
 - 实例：
-	```
+	```sql
 	CREATE TABLE buffer_to_memory_tb1 AS memory_tb1
 	ENGINE = Buffer(default, memory_tb1, 16, 10, 100, 10000, 1000000, 10000000, 100000000)
 	```
-	```
+	```sql
 	INSERT INTO TABLE buffer_to_memory_tb1
 	SELECT number FROM numbers(1000001)
 	```
@@ -258,7 +258,7 @@ SLECT arrayJoin([1, 2, 3]) AS a WHERE a IN set_1
 ### Merge
 - 负责合并多个查询的结果集；
 - 被代理查询的数据表被要求处于同一个数据库内，且拥有相同的表结构；但是可以使用不同的表引擎以及分区定义；
-```
+```sql
 CREATE TABLE test_table_all AS test_table_merge
 ENGINE = Merge(currentDatabases(), '^test_table_')
 ```
@@ -274,7 +274,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 	- 调用函数：`WITH SUM(data_bytes) as bytes`
 	- 定义子查询：`WITH (SELECT ... FROM ...) AS res`
 	- 在子查询中重复使用WITH
-		```
+		```sql
 		SELECT id
 		FROM(
 			WITH (
@@ -286,7 +286,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 ### SAMPLE 
 - 实现数据采样的功能，是查询仅仅返回采样数据而不是全部数据；
 - SAMPLE子句的采样机制是一种幂等设计，即数据不发生变化情况下，总是能够返回相同数据；
-	```
+	```sql
 	CREATE TABLE hits_v1(
 		counterId UInt64,
 		eventDate DATE,
@@ -304,7 +304,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 		- factor表示采样因子，取值0～1。
 		- 统计查询时，为了得到最终的近似结果，就需要将得到的结果乘以采样系数：
 			*//可以借助 虚拟字段 _simple_factor来获取采样系数。*<br>
-			```
+			```sql
 			SELECT count() * any(_sample_factor) FROM hits_v1 SAMPLE 0.1
 			```
 	2. SAMPLE rows
@@ -315,19 +315,19 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 	3. SAMPLE factor OFFSET n
 		- 表示按照 因子系数factor 和 偏移量n 采样；
 		- n表示偏移多少数据才开始采样，它们都是0～1之间的小数；
-			```
+			```sql
 			SELECT counterId FROM hits_v1 SAMPLE 0.4 OFFSET 0.5
 			```
 ### ARRAY JOIN
 - ARRAY JOIN 子句允许在数据表的内部与数组或嵌套类型字段进行JOIN操作，从而将一行数组展开为多行；
 - 先新建一个包含Array字段的测试表并插入数据：
-	```
+	```sql
 	CREATE TABLE query_v1(
 		title String,
 		value Array(UInt8)
 	)ENGINE = Log
 	```
-	```
+	```sql
 	INSERT INTO query_v1
 	VALUES ('food', [1, 2, 3]),
 	('fruit', [3, 4]),
@@ -360,7 +360,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 | meat   | []     | 0    |
 		
 - 当同时对多个数组字段进行ARRAY JOIN操作时，查询的计算逻辑是按行合并而不是产生笛卡尔积：
-	```
+	```sql
 	SELECT title, value, v, arrayMap(x->x*2, value) as mapv, v_1
 	FROM query_v1 
 	LEFT ARRAY JOIN value AS v, mapv AS v_1
@@ -375,7 +375,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 | meat   | []     | 0    | []     | 0    |
 
 - 包含嵌套类型的测试表：
-	```
+	```sql
 	CREATE TABLE query_v2(
 		title String,
 		nest Nested(
@@ -386,7 +386,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 	```
 	*//在写入嵌套数据类型时，同一行数据中各个数组的长度需要对齐，而对多行数据之间的数组长度没有限制*<br>
 	
-	```
+	```sql
 	INSERT INTO query_v2 
 	VALUES('food', [1, 2, 3], [10, 20, 30]),
 	('fruit', [3, 4], [30, 40]),
@@ -410,7 +410,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 
 ##### ASOF
 - 是一种模糊连接，它允许在连接键之后追加定义一个模糊连接的匹配条件asof_column:
-	```
+	```sql
 	SELECT a.id, a.name, b.tate, a.time, b.time
 	FROM join_tb1 AS a 
 	ASOF INNER JOIN join_tb2 AS b
@@ -421,7 +421,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 	*//这条语句的语义等同于：`a.id=b.id AND a.time>=b.time`，且仅返回了右表中第一行连接匹配的数据。*<br>
 	
 - ASOF支持使用USING的间写形式，USING后声明的最后一个字段会被自动转换为asof_column模糊连接条件：
-	```
+	```sql
 	SELECT a.id, a.name, b.tate, a.time, b.time
 	FROM join_tb1 AS a 
 	ASOF INNER JOIN join_tb2 AS b
@@ -468,7 +468,7 @@ ENGINE = Merge(currentDatabases(), '^test_table_')
 - 除了普通GROUP BY聚合查询，目前还能配合WITH ROLLUP、WITH CUBE 和 WITH TOTAL三种修饰符获取额外汇总信息。
 - WITH ROLLUP
 	- 它能够按照聚合键从右向左上卷数据，生成分组小计和总计。
-		```
+		```sql
 		SELECT table, name SUM(byte_on_disk) FROM system.parts
 		GROUP BY table, name
 		WITH ROLLUP
